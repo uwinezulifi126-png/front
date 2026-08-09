@@ -1,52 +1,30 @@
-import { useState } from 'react'
-import { TODAY } from '../data/mock'
+import { useMemo, useState } from 'react'
 import { IconPlaceholder } from './IconPlaceholder'
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六']
 
-const CN_HOLIDAYS = new Set([
-  '2025-01-01', '2025-01-28', '2025-01-29', '2025-01-30', '2025-01-31',
-  '2025-02-03', '2025-02-04',
-  '2025-04-04', '2025-04-05', '2025-04-06',
-  '2025-05-01', '2025-05-02', '2025-05-05',
-  '2025-05-31', '2025-06-02',
-  '2025-10-01', '2025-10-02', '2025-10-03', '2025-10-06', '2025-10-07', '2025-10-08',
-  '2026-01-01', '2026-01-02',
-  '2026-02-17', '2026-02-18', '2026-02-19', '2026-02-20', '2026-02-23', '2026-02-24',
-  '2026-04-04', '2026-04-05', '2026-04-06',
-  '2026-05-01', '2026-05-04', '2026-05-05',
-  '2026-06-19', '2026-06-22',
-  '2026-10-01', '2026-10-02', '2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08',
-])
-
-const CN_MAKEUPS = new Set([
-  '2025-01-26', '2025-02-08', '2025-04-27', '2025-09-28', '2025-10-11',
-  '2026-02-15', '2026-02-28', '2026-04-12', '2026-09-27', '2026-10-10',
-])
-
-function isTradingDay(dateStr: string): boolean {
-  if (CN_HOLIDAYS.has(dateStr)) return false
-  const d = new Date(`${dateStr}T12:00:00`)
-  const dow = d.getDay()
-  if (dow === 0 || dow === 6) return CN_MAKEUPS.has(dateStr)
-  return true
-}
-
 type DatePickerProps = {
   selectedDate: string
+  /** ISO dates from /api/calendar/recent (desc). Empty = no picker days. */
+  tradeDates: string[]
+  today: string
   onChange: (d: string) => void
 }
 
-export function DatePicker({ selectedDate, onChange }: DatePickerProps) {
+export function DatePicker({ selectedDate, tradeDates, today, onChange }: DatePickerProps) {
   const [open, setOpen] = useState(false)
-  const today = new Date(`${TODAY}T12:00:00`)
-  const sel = new Date(`${selectedDate}T12:00:00`)
+  const allowed = useMemo(() => new Set(tradeDates), [tradeDates])
+  const sel = selectedDate ? new Date(`${selectedDate}T12:00:00`) : new Date()
   const [viewYear, setViewYear] = useState(sel.getFullYear())
   const [viewMonth, setViewMonth] = useState(sel.getMonth())
 
-  const isToday = selectedDate === TODAY
-  const weekDay = WEEKDAYS[isNaN(sel.getTime()) ? 5 : sel.getDay()]
-  const displayLabel = isToday ? `今日 ${selectedDate}` : selectedDate
+  const isToday = Boolean(today && selectedDate === today)
+  const weekDay = WEEKDAYS[isNaN(sel.getTime()) ? 0 : sel.getDay()]
+  const displayLabel = !selectedDate
+    ? '选择日期'
+    : isToday
+      ? `今日 ${selectedDate}`
+      : selectedDate
 
   const firstDay = new Date(viewYear, viewMonth, 1).getDay()
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
@@ -61,23 +39,22 @@ export function DatePicker({ selectedDate, onChange }: DatePickerProps) {
     return `${viewYear}-${mm}-${dd}`
   }
 
-  const isDisabled = (d: number) => {
-    const ds = toDateStr(d)
-    return new Date(`${ds}T12:00:00`) > today || !isTradingDay(ds)
-  }
-
   return (
     <div className="date-picker">
       <button
         type="button"
         className={`date-picker-btn${isToday ? '' : ' accented'}`}
         onClick={() => setOpen((o) => !o)}
+        disabled={tradeDates.length === 0}
       >
         <IconPlaceholder kind="calendar" size={12} />
-        <span>{displayLabel} 周{weekDay}</span>
+        <span>
+          {displayLabel}
+          {selectedDate ? ` 周${weekDay}` : ''}
+        </span>
         <span className="muted">▾</span>
       </button>
-      {open && (
+      {open && tradeDates.length > 0 && (
         <div className="date-picker-panel">
           <div className="date-picker-nav">
             <button
@@ -119,7 +96,7 @@ export function DatePicker({ selectedDate, onChange }: DatePickerProps) {
                 <button
                   key={d}
                   type="button"
-                  disabled={isDisabled(d)}
+                  disabled={!allowed.has(toDateStr(d))}
                   className={toDateStr(d) === selectedDate ? 'selected' : ''}
                   onClick={() => {
                     onChange(toDateStr(d))

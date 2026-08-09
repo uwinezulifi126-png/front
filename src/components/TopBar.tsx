@@ -1,25 +1,31 @@
 import { useState } from 'react'
-import { INDEX_TICKERS, TODAY } from '../data/mock'
 import { DatePicker } from './DatePicker'
 import { IconPlaceholder } from './IconPlaceholder'
 
 type TopBarProps = {
   time: string
   selectedDate: string
+  tradeDates: string[]
+  today: string
+  statusMessage: string
+  isLive: boolean
   onDateChange: (d: string) => void
   refreshing: boolean
   onRefresh: () => void
 }
 
-export function TopBar({ time, selectedDate, onDateChange, refreshing, onRefresh }: TopBarProps) {
+export function TopBar({
+  time,
+  selectedDate,
+  tradeDates,
+  today,
+  statusMessage,
+  isLive,
+  onDateChange,
+  refreshing,
+  onRefresh,
+}: TopBarProps) {
   const [logoFlash, setLogoFlash] = useState(false)
-  const isToday = selectedDate === TODAY
-
-  const handleLogoClick = () => {
-    setLogoFlash(true)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-    window.setTimeout(() => setLogoFlash(false), 1200)
-  }
 
   return (
     <header className="topbar">
@@ -27,36 +33,35 @@ export function TopBar({ time, selectedDate, onDateChange, refreshing, onRefresh
         <button
           type="button"
           className={`brand-btn${logoFlash ? ' flash' : ''}`}
-          onClick={handleLogoClick}
+          onClick={() => {
+            setLogoFlash(true)
+            window.scrollTo({ top: 0, behavior: 'smooth' })
+            window.setTimeout(() => setLogoFlash(false), 1200)
+          }}
           aria-label="涨停板盯盘系统"
         >
-          {/* 待导出资源: logo */}
           <IconPlaceholder kind="logo" size={24} className="icon-placeholder brand-logo" />
           <span className="brand">涨停板盯盘系统</span>
         </button>
-        <div className="topbar-indices">
-          {INDEX_TICKERS.map((idx) => (
-            <span key={idx.label} className="index-item">
-              <span className="index-label">{idx.label}</span>
-              <span className="index-val">{idx.val}</span>
-              <span className={idx.up ? 'up' : 'down'}>{idx.pct}</span>
-            </span>
-          ))}
-        </div>
+        {/* 指数行情接口暂无，不展示占位假数据 */}
       </div>
       <div className="topbar-right">
         <span className="mono live">
-          <span className={`blink live-dot${isToday ? '' : ' muted-dot'}`}>●</span>{' '}
-          {isToday ? '交易中' : '历史回看'}
+          <span className={`blink live-dot${isLive ? '' : ' muted-dot'}`}>●</span> {statusMessage}
         </span>
         <span className="clock">{time}</span>
-        <DatePicker selectedDate={selectedDate} onChange={onDateChange} />
-        <button type="button" className="refresh-btn" onClick={onRefresh} disabled={refreshing}>
+        <DatePicker
+          selectedDate={selectedDate}
+          tradeDates={tradeDates}
+          today={today}
+          onChange={onDateChange}
+        />
+        <button type="button" className="refresh-btn" onClick={onRefresh} disabled={refreshing || !selectedDate}>
           <IconPlaceholder kind="refresh" />
           {refreshing ? '刷新中…' : '刷新'}
         </button>
       </div>
-      {logoFlash && <div className="toast">已点击 Logo（占位）</div>}
+      {logoFlash && <div className="toast">已点击 Logo</div>}
     </header>
   )
 }

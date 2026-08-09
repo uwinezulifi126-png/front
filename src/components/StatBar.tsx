@@ -1,6 +1,16 @@
 import type { MarketStat } from '../types'
 
 export function StatBar({ stats }: { stats: MarketStat[] }) {
+  if (stats.length === 0) {
+    return (
+      <div className="statbar">
+        <div className="stat-item" style={{ flex: 1 }}>
+          <div className="stat-label">暂无市场统计</div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="statbar">
       {stats.map((s, i) => (

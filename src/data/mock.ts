@@ -11,22 +11,27 @@ import type {
 
 export const TODAY = '2026-08-07'
 
+function guessTsCode(code: string): string {
+  if (code.startsWith('6') || code.startsWith('9')) return `${code}.SH`
+  return `${code}.SZ`
+}
+
 export const generateStocks = (): Stock[] => [
-  { code: '300750', name: '宁德时代', price: 231.8, change: 21.08, pct: 10.0, volume: 128.4, amount: 29.7, limitTime: '09:31', opens: 0, sector: '新能源', status: 'locked', strength: 97, bidAmount: 32.4, riseSpeed: 3.21 },
-  { code: '002594', name: '比亚迪', price: 187.56, change: 17.05, pct: 10.0, volume: 92.1, amount: 17.3, limitTime: '09:33', opens: 1, sector: '新能源', status: 'locked', strength: 88, bidAmount: 18.6, riseSpeed: 2.87 },
-  { code: '600519', name: '贵州茅台', price: 1892.0, change: 172.0, pct: 10.0, volume: 8.2, amount: 15.5, limitTime: '09:46', opens: 0, sector: '消费电子', status: 'sealed', strength: 72, bidAmount: 9.1, riseSpeed: 1.54 },
-  { code: '000858', name: '五粮液', price: 156.78, change: 14.25, pct: 10.0, volume: 34.5, amount: 5.4, limitTime: '10:02', opens: 2, sector: '消费电子', status: 'open', strength: 51, bidAmount: 3.2, riseSpeed: 0.93 },
-  { code: '688599', name: '天合光能', price: 23.46, change: 2.13, pct: 10.0, volume: 218.7, amount: 5.1, limitTime: '09:35', opens: 0, sector: '光伏', status: 'locked', strength: 94, bidAmount: 12.7, riseSpeed: 4.12 },
-  { code: '002415', name: '海康威视', price: 34.88, change: 3.17, pct: 10.0, volume: 176.3, amount: 6.1, limitTime: '09:42', opens: 0, sector: '人工智能', status: 'locked', strength: 85, bidAmount: 8.3, riseSpeed: 2.44 },
-  { code: '300059', name: '东方财富', price: 18.34, change: 1.67, pct: 10.0, volume: 423.6, amount: 7.8, limitTime: '09:30', opens: 0, sector: '数据要素', status: 'locked', strength: 99, bidAmount: 41.2, riseSpeed: 5.67 },
-  { code: '600900', name: '长江电力', price: 28.64, change: 2.6, pct: 10.0, volume: 89.2, amount: 2.6, limitTime: '09:58', opens: 1, sector: '储能', status: 'sealed', strength: 63, bidAmount: 4.1, riseSpeed: 1.18 },
-  { code: '688561', name: '奇安信', price: 67.24, change: 6.11, pct: 10.0, volume: 44.8, amount: 3.0, limitTime: '10:15', opens: 3, sector: '人工智能', status: 'open', strength: 38, bidAmount: 1.8, riseSpeed: 0.62 },
-  { code: '300014', name: '亿纬锂能', price: 43.12, change: 3.92, pct: 10.0, volume: 112.3, amount: 4.8, limitTime: '09:37', opens: 0, sector: '新能源', status: 'locked', strength: 91, bidAmount: 16.4, riseSpeed: 3.55 },
-  { code: '002049', name: '紫光国微', price: 89.6, change: 8.15, pct: 10.0, volume: 56.9, amount: 5.1, limitTime: '09:50', opens: 0, sector: '半导体', status: 'locked', strength: 79, bidAmount: 6.7, riseSpeed: 1.89 },
-  { code: '601127', name: '赛力斯', price: 74.32, change: 6.76, pct: 10.0, volume: 138.4, amount: 10.3, limitTime: '09:44', opens: 1, sector: '新能源', status: 'sealed', strength: 68, bidAmount: 7.9, riseSpeed: 2.31 },
-  { code: '688041', name: '海光信息', price: 112.4, change: 10.22, pct: 10.0, volume: 31.6, amount: 3.6, limitTime: '10:22', opens: 0, sector: '半导体', status: 'locked', strength: 83, bidAmount: 5.2, riseSpeed: 1.47 },
-  { code: '300308', name: '中际旭创', price: 143.56, change: 13.05, pct: 10.0, volume: 48.7, amount: 7.0, limitTime: '09:31', opens: 0, sector: '人工智能', status: 'locked', strength: 96, bidAmount: 19.8, riseSpeed: 4.78 },
-  { code: '600030', name: '中信证券', price: 25.84, change: 2.35, pct: 10.0, volume: 298.1, amount: 7.7, limitTime: '10:38', opens: 2, sector: '数据要素', status: 'open', strength: 42, bidAmount: 2.1, riseSpeed: 0.71 },
+  { code: '300750', tsCode: guessTsCode('300750'), name: '宁德时代', price: 231.8, change: 21.08, pct: 10.0, volume: 128.4, amount: 29.7, limitTime: '09:31', opens: 0, sector: '新能源', status: 'locked', strength: 97, bidAmount: 32.4, riseSpeed: 3.21 },
+  { code: '002594', tsCode: guessTsCode('002594'), name: '比亚迪', price: 187.56, change: 17.05, pct: 10.0, volume: 92.1, amount: 17.3, limitTime: '09:33', opens: 1, sector: '新能源', status: 'locked', strength: 88, bidAmount: 18.6, riseSpeed: 2.87 },
+  { code: '600519', tsCode: guessTsCode('600519'), name: '贵州茅台', price: 1892.0, change: 172.0, pct: 10.0, volume: 8.2, amount: 15.5, limitTime: '09:46', opens: 0, sector: '消费电子', status: 'sealed', strength: 72, bidAmount: 9.1, riseSpeed: 1.54 },
+  { code: '000858', tsCode: guessTsCode('000858'), name: '五粮液', price: 156.78, change: 14.25, pct: 10.0, volume: 34.5, amount: 5.4, limitTime: '10:02', opens: 2, sector: '消费电子', status: 'open', strength: 51, bidAmount: 3.2, riseSpeed: 0.93 },
+  { code: '688599', tsCode: guessTsCode('688599'), name: '天合光能', price: 23.46, change: 2.13, pct: 10.0, volume: 218.7, amount: 5.1, limitTime: '09:35', opens: 0, sector: '光伏', status: 'locked', strength: 94, bidAmount: 12.7, riseSpeed: 4.12 },
+  { code: '002415', tsCode: guessTsCode('002415'), name: '海康威视', price: 34.88, change: 3.17, pct: 10.0, volume: 176.3, amount: 6.1, limitTime: '09:42', opens: 0, sector: '人工智能', status: 'locked', strength: 85, bidAmount: 8.3, riseSpeed: 2.44 },
+  { code: '300059', tsCode: guessTsCode('300059'), name: '东方财富', price: 18.34, change: 1.67, pct: 10.0, volume: 423.6, amount: 7.8, limitTime: '09:30', opens: 0, sector: '数据要素', status: 'locked', strength: 99, bidAmount: 41.2, riseSpeed: 5.67 },
+  { code: '600900', tsCode: guessTsCode('600900'), name: '长江电力', price: 28.64, change: 2.6, pct: 10.0, volume: 89.2, amount: 2.6, limitTime: '09:58', opens: 1, sector: '储能', status: 'sealed', strength: 63, bidAmount: 4.1, riseSpeed: 1.18 },
+  { code: '688561', tsCode: guessTsCode('688561'), name: '奇安信', price: 67.24, change: 6.11, pct: 10.0, volume: 44.8, amount: 3.0, limitTime: '10:15', opens: 3, sector: '人工智能', status: 'open', strength: 38, bidAmount: 1.8, riseSpeed: 0.62 },
+  { code: '300014', tsCode: guessTsCode('300014'), name: '亿纬锂能', price: 43.12, change: 3.92, pct: 10.0, volume: 112.3, amount: 4.8, limitTime: '09:37', opens: 0, sector: '新能源', status: 'locked', strength: 91, bidAmount: 16.4, riseSpeed: 3.55 },
+  { code: '002049', tsCode: guessTsCode('002049'), name: '紫光国微', price: 89.6, change: 8.15, pct: 10.0, volume: 56.9, amount: 5.1, limitTime: '09:50', opens: 0, sector: '半导体', status: 'locked', strength: 79, bidAmount: 6.7, riseSpeed: 1.89 },
+  { code: '601127', tsCode: guessTsCode('601127'), name: '赛力斯', price: 74.32, change: 6.76, pct: 10.0, volume: 138.4, amount: 10.3, limitTime: '09:44', opens: 1, sector: '新能源', status: 'sealed', strength: 68, bidAmount: 7.9, riseSpeed: 2.31 },
+  { code: '688041', tsCode: guessTsCode('688041'), name: '海光信息', price: 112.4, change: 10.22, pct: 10.0, volume: 31.6, amount: 3.6, limitTime: '10:22', opens: 0, sector: '半导体', status: 'locked', strength: 83, bidAmount: 5.2, riseSpeed: 1.47 },
+  { code: '300308', tsCode: guessTsCode('300308'), name: '中际旭创', price: 143.56, change: 13.05, pct: 10.0, volume: 48.7, amount: 7.0, limitTime: '09:31', opens: 0, sector: '人工智能', status: 'locked', strength: 96, bidAmount: 19.8, riseSpeed: 4.78 },
+  { code: '600030', tsCode: guessTsCode('600030'), name: '中信证券', price: 25.84, change: 2.35, pct: 10.0, volume: 298.1, amount: 7.7, limitTime: '10:38', opens: 2, sector: '数据要素', status: 'open', strength: 42, bidAmount: 2.1, riseSpeed: 0.71 },
 ]
 
 function seededRand(seed: number) {
@@ -40,12 +45,16 @@ function seededRand(seed: number) {
 export function generateStocksForDate(date: string): Stock[] {
   const seed = date.split('-').reduce((a, v) => a * 100 + parseInt(v, 10), 0)
   const rand = seededRand(seed)
-  return generateStocks().map((s) => ({
-    ...s,
-    strength: Math.min(99, Math.max(30, Math.round(s.strength * (0.85 + rand() * 0.3)))),
-    bidAmount: +(Math.max(0.5, s.bidAmount * (0.7 + rand() * 0.6))).toFixed(1),
-    status: rand() > 0.75 ? 'open' : rand() > 0.55 ? 'sealed' : 'locked',
-  }))
+  return generateStocks().map((s) => {
+    const strength = s.strength ?? 50
+    const bidAmount = s.bidAmount ?? 1
+    return {
+      ...s,
+      strength: Math.min(99, Math.max(30, Math.round(strength * (0.85 + rand() * 0.3)))),
+      bidAmount: +(Math.max(0.5, bidAmount * (0.7 + rand() * 0.6))).toFixed(1),
+      status: (rand() > 0.75 ? 'open' : rand() > 0.55 ? 'sealed' : 'locked') as Stock['status'],
+    }
+  })
 }
 
 export const generateMarketStats = (): MarketStat[] => [
@@ -131,14 +140,17 @@ export const BOARD_RATES = [
 ]
 
 export const NEWS_DATA: NewsItem[] = [
-  { time: '13:52', tag: '财联社', urgent: true, title: '央行宣布下调MLF利率10bp，释放流动性信号', body: '中国人民银行今日宣布，中期借贷便利（MLF）操作利率下调10个基点，至2.40%，本次操作规模1200亿元，市场流动性预期宽松。' },
-  { time: '13:48', tag: '热点', urgent: false, title: '工信部：加快推进人工智能产业发展专项政策落地', body: '工信部召开新闻发布会，强调加快AI大模型在制造业、医疗、教育等领域落地应用，相关配套政策将于下季度出台。' },
-  { time: '13:41', tag: '上海证券报', urgent: false, title: '宁德时代麒麟3.0电池实现量产，能量密度再创新高', body: '宁德时代官方确认麒麟3.0电池系列正式进入量产阶段，能量密度达到330Wh/kg，较上代提升18%，首批供货比亚迪汉EV车型。' },
-  { time: '13:35', tag: '政策', urgent: true, title: '证监会：研究优化转融通机制，限制做空行为', body: '证监会新闻发言人表示，正在研究进一步优化转融通相关制度，防范过度做空行为，切实维护市场公平秩序。' },
-  { time: '13:28', tag: '中国证券报', urgent: false, title: '海光信息获国家大基金三期战略入股，持股比例5.2%', body: '国家集成电路产业投资基金三期正式入股海光信息，持股5.2%，成为第三大股东，国产算力芯片发展再获重磅背书。' },
-  { time: '13:21', tag: '军工', urgent: false, title: '国防白皮书发布，未来五年军费增速维持8%以上', body: '国防部发布年度国防白皮书，明确未来五年国防预算增速不低于8%，重点支持信息化、智能化武器装备研发采购。' },
-  { time: '13:14', tag: '财联社', urgent: false, title: '7月CPI同比+0.8%，PPI同比-1.2%，通缩压力仍存', body: '国家统计局公布7月物价数据，CPI同比上涨0.8%，低于预期；PPI同比下降1.2%，工业品价格持续承压。' },
-  { time: '13:06', tag: '北向', urgent: false, title: '北向资金今日净流入82.4亿，连续三日净买入', body: '截至午盘，沪深股通北向资金合计净流入82.4亿元，重点加仓食品饮料、电力设备、银行板块。' },
+  // 昨日新闻头条
+  { time: '昨日 21:45', tag: '财联社', urgent: true, category: 'yesterday', title: '央行宣布下调MLF利率10bp，释放流动性信号', body: '中国人民银行宣布，中期借贷便利（MLF）操作利率下调10个基点，至2.40%，本次操作规模1200亿元，市场流动性预期宽松。' },
+  { time: '昨日 20:10', tag: '政策', urgent: true, category: 'yesterday', title: '证监会：研究优化转融通机制，限制做空行为', body: '证监会新闻发言人表示，正在研究进一步优化转融通相关制度，防范过度做空行为，切实维护市场公平秩序。' },
+  { time: '昨日 18:30', tag: '财联社', urgent: false, category: 'yesterday', title: '7月CPI同比+0.8%，PPI同比-1.2%，通缩压力仍存', body: '国家统计局公布7月物价数据，CPI同比上涨0.8%，低于预期；PPI同比下降1.2%，工业品价格持续承压。' },
+  { time: '昨日 17:55', tag: '证券时报', urgent: false, category: 'yesterday', title: '国防白皮书发布，未来五年军费增速维持8%以上', body: '国防部发布年度国防白皮书，明确未来五年国防预算增速不低于8%，重点支持信息化、智能化武器装备研发采购。' },
+  { time: '昨日 16:20', tag: '热点', urgent: false, category: 'yesterday', title: '两市成交额连续三日破万亿，杠杆资金小幅回升', body: '沪深两市成交额连续三个交易日突破万亿元，融资余额较前一交易日增加约48亿元，市场交投情绪有所回暖。' },
+  // 实时新闻：其它来源仍为示例；财联社实时改由 API（加红电报），不再用 mock 冒充
+  { time: '13:52', tag: '热点', urgent: false, category: 'realtime', title: '工信部：加快推进人工智能产业发展专项政策落地', body: '工信部召开新闻发布会，强调加快AI大模型在制造业、医疗、教育等领域落地应用，相关配套政策将于下季度出台。' },
+  { time: '13:48', tag: '上海证券报', urgent: false, category: 'realtime', title: '宁德时代麒麟3.0电池实现量产，能量密度再创新高', body: '宁德时代官方确认麒麟3.0电池系列正式进入量产阶段，能量密度达到330Wh/kg，较上代提升18%，首批供货比亚迪汉EV车型。' },
+  { time: '13:41', tag: '中国证券报', urgent: false, category: 'realtime', title: '海光信息获国家大基金三期战略入股，持股比例5.2%', body: '国家集成电路产业投资基金三期正式入股海光信息，持股5.2%，成为第三大股东，国产算力芯片发展再获重磅背书。' },
+  { time: '13:35', tag: '北向', urgent: false, category: 'realtime', title: '北向资金今日净流入82.4亿，连续三日净买入', body: '截至午盘，沪深股通北向资金合计净流入82.4亿元，重点加仓食品饮料、电力设备、银行板块。' },
 ]
 
 export const NEWS_TAG_COLORS: Record<string, string> = {
@@ -147,7 +159,7 @@ export const NEWS_TAG_COLORS: Record<string, string> = {
   上海证券报: '#48bb78',
   政策: '#f6ad55',
   中国证券报: '#76e4f7',
-  军工: '#fc8181',
+  证券时报: '#fc8181',
   北向: '#68d391',
 }
 

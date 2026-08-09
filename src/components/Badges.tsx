@@ -1,16 +1,17 @@
 import type { Stock } from '../types'
 
-export function StrengthBar({ value }: { value: number }) {
-  const color = value >= 80 ? 'var(--up-bright)' : value >= 50 ? 'var(--accent)' : 'var(--down-bright)'
+/** 近 1 分钟涨跌幅%；无数据时 —，涨红跌绿。 */
+export function RiseSpeedCell({ value }: { value: number | null | undefined }) {
+  if (value == null || !Number.isFinite(value)) {
+    return <span className="mono muted">—</span>
+  }
+  const cls = value > 0 ? 'up' : value < 0 ? 'down' : 'muted'
+  const sign = value > 0 ? '+' : ''
   return (
-    <div className="strength">
-      <div className="strength-track">
-        <div className="strength-fill" style={{ width: `${value}%`, backgroundColor: color }} />
-      </div>
-      <span className="mono strength-val" style={{ color }}>
-        {value}
-      </span>
-    </div>
+    <span className={`mono ${cls}`}>
+      {sign}
+      {value.toFixed(2)}%
+    </span>
   )
 }
 
