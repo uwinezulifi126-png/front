@@ -39,7 +39,7 @@ export function WatchlistView({ watchlist, quoteStocks, onOpenFloat }: Watchlist
   return (
     <div className="watchlist-view">
       <div className="watchlist-toolbar">
-        <span className="mono muted">共 {watchlist.count} 只 · 不受科创/创业板过滤隐藏</span>
+        <span className="mono muted">共 {watchlist.count} 只 · 不受科创/北交所/创业板过滤隐藏</span>
         {onOpenFloat && (
           <button type="button" className="watch-float-launch" onClick={onOpenFloat}>
             弹出悬浮窗

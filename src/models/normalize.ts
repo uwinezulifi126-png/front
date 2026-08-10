@@ -91,6 +91,7 @@ function normalizeStock(raw: unknown): RankStock | null {
     industry: pickString(obj, ['industry', '所属行业']) ?? null,
     amount: pickNumber(obj, ['amount', '成交额']) ?? null,
     open_times: pickNumber(obj, ['open_times', 'opens', '打开次数']) ?? null,
+    limit_type: pickString(obj, ['limit_type', 'limit', '涨停类型']) ?? null,
     rise_speed:
       pickNumber(obj, ['rise_speed', 'pct_1m', 'riseSpeed', '一分钟涨速']) ?? null,
   }
@@ -126,6 +127,7 @@ function mergeStock(base: RankStock, extra: RankStock): RankStock {
     industry: base.industry ?? extra.industry ?? null,
     amount: base.amount ?? extra.amount ?? null,
     open_times: base.open_times ?? extra.open_times ?? null,
+    limit_type: base.limit_type ?? extra.limit_type ?? null,
     rise_speed: base.rise_speed ?? extra.rise_speed ?? null,
   }
 }
@@ -190,6 +192,11 @@ function normalizeItem(raw: unknown): RankItem | null {
 
   stocks = sortByPctDesc(stocks)
 
+  // 强势成分不计涨停股；服务端另要求昨日首板；strong_count 与列表口径一致
+  if (hasStrong) {
+    stocks = stocks.filter((s) => s.is_limit_up !== true)
+  }
+
   const strong_count =
     pickNumber(obj, ['strong_count', 'strongCount']) ??
     (hasStrong ? stocks.length : null)
@@ -200,7 +207,7 @@ function normalizeItem(raw: unknown): RankItem | null {
     limit_up_count,
     max_limit_times:
       pickNumber(obj, ['max_limit_times', 'max_consecutive', 'max_limit']) ?? null,
-    strong_count,
+    strong_count: hasStrong ? stocks.length : strong_count,
     pct_chg: pickNumber(obj, ['pct_chg', 'pct_change', 'change_pct', 'avg_pct']) ?? null,
     theme: pickString(obj, ['theme', 'theme_raw', '题材']) ?? null,
     reason: pickString(obj, ['reason', '理由', 'summary', 'desc', 'description']) ?? null,
@@ -371,6 +378,15 @@ export function normalizeSnapshot(payload: unknown): RankSnapshot {
     root.limit_up_list ?? nested?.limit_up_list ?? root.limit_ups,
   )
   rank = enrichRankWithQuotes(rank, quotes)
+  // 二次剔除：即便旧快照把涨停股塞进 strong_stocks，也不计入强势口径
+  rank = rank.map((item) => {
+    if (item.strong_count == null) return item
+    const stocks = item.stocks.filter(
+      (s) => s.is_limit_up !== true && !quotes.has(s.stock_code),
+    )
+    if (stocks.length === item.stocks.length) return item
+    return { ...item, stocks, strong_count: stocks.length }
+  })
   rank = fillMissingStockNames(rank, indexStockNames(rank, quotes))
 
   return {

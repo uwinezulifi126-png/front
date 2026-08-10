@@ -3,6 +3,11 @@ import type { LadderRow, SectorDetail, SectorHeatItem, Stock, StrongStock } from
 export type BoardFilterOpts = {
   includeChiNext: boolean
   includeStar: boolean
+  includeBj: boolean
+}
+
+function allBoardsIncluded(opts: BoardFilterOpts): boolean {
+  return opts.includeChiNext && opts.includeStar && opts.includeBj
 }
 
 /** 创业板：300/301 开头，或 300*.SZ / 301*.SZ */
@@ -21,9 +26,19 @@ export function isStarCode(codeOrTs: string): boolean {
   return code.startsWith('688') || code.startsWith('689')
 }
 
+/** 北交所：.BJ 后缀，或 4xxxxx / 8xxxxx / 920xxx（改革后新代码） */
+export function isBjCode(codeOrTs: string): boolean {
+  const raw = codeOrTs.trim().toUpperCase()
+  if (!raw) return false
+  if (raw.endsWith('.BJ')) return true
+  const code = raw.replace(/\.(SH|SZ|BJ)$/i, '')
+  return code.startsWith('4') || code.startsWith('8') || code.startsWith('920')
+}
+
 export function passesBoardFilter(codeOrTs: string, opts: BoardFilterOpts): boolean {
   if (!opts.includeChiNext && isChiNextCode(codeOrTs)) return false
   if (!opts.includeStar && isStarCode(codeOrTs)) return false
+  if (!opts.includeBj && isBjCode(codeOrTs)) return false
   return true
 }
 
@@ -36,12 +51,12 @@ export function filterByBoard<T extends { code?: string; tsCode?: string }>(
   items: T[],
   opts: BoardFilterOpts,
 ): T[] {
-  if (opts.includeChiNext && opts.includeStar) return items
+  if (allBoardsIncluded(opts)) return items
   return items.filter((item) => passesBoardFilter(itemCode(item), opts))
 }
 
 export function filterLadder(rows: LadderRow[], opts: BoardFilterOpts): LadderRow[] {
-  if (opts.includeChiNext && opts.includeStar) return rows
+  if (allBoardsIncluded(opts)) return rows
   return rows
     .map((row) => ({
       ...row,

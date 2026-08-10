@@ -15,6 +15,11 @@ function formatRate(rate: number | null): string {
   return `${(rate * 100).toFixed(1)}%`
 }
 
+/** 0/0 无样本行不展示（如六板0/0、七板0/0） */
+function shouldShowPromotionRow(it: PromotionRateItem): boolean {
+  return !(it.base === 0 && it.promoted === 0)
+}
+
 export function RightPanel({ sentiment = [], selectedDate = '' }: RightPanelProps) {
   const [items, setItems] = useState<PromotionRateItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -48,6 +53,8 @@ export function RightPanel({ sentiment = [], selectedDate = '' }: RightPanelProp
       })
     return () => ac.abort()
   }, [selectedDate])
+
+  const visiblePromotionItems = items.filter(shouldShowPromotionRow)
 
   return (
     <aside className="sidebar-right">
@@ -90,11 +97,11 @@ export function RightPanel({ sentiment = [], selectedDate = '' }: RightPanelProp
           <div className="mono muted">加载中…</div>
         ) : error ? (
           <div className="mono muted">{error}</div>
-        ) : items.length === 0 ? (
+        ) : visiblePromotionItems.length === 0 ? (
           <div className="mono muted">{message || '暂无数据'}</div>
         ) : (
           <div className="rate-list">
-            {items.map((it) => (
+            {visiblePromotionItems.map((it) => (
               <div key={it.boards} className="rate-row">
                 <span>
                   {it.label}

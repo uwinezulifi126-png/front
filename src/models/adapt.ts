@@ -100,6 +100,7 @@ function rankStockFromHistory(h: LimitHistoryItem): RankStock {
     open_times: h.打开次数,
     // 涨停历史(U)：最终仍涨停；炸板由 historyIsZhaban / is_limit_up=false 判定
     is_limit_up: !historyIsZhaban(h),
+    limit_type: historyIsZhaban(h) ? 'Z' : 'U',
     industry: h.所属行业,
     amount: h.成交额,
     circ_mv: h.流通市值,
@@ -114,6 +115,10 @@ function resolveStockStatus(
 ): Stock['status'] {
   if (hist && historyIsZhaban(hist)) return 'open'
   if (s.is_limit_up === false) return 'open'
+  const limitType = String(s.limit_type ?? '')
+    .trim()
+    .toUpperCase()
+  if (limitType === 'Z') return 'open'
   // limit_up_list 成员或涨停历史(U)：当前/最终仍封板（即使打开次数>0）
   return 'locked'
 }
@@ -179,6 +184,29 @@ export function adaptStocks(
   if (history.length === 0) return []
 
   return history.map((h) => mapStock(rankStockFromHistory(h), snapshot.rank, h))
+}
+
+/**
+ * 「全部」Tab：上一交易日涨停历史 → Stock[]。
+ * 默认只保留 U（收盘仍涨停）；Z 炸板排除。缺实时字段时用历史字段 / mapStock 默认值。
+ */
+export function adaptHistoryLimitUps(
+  history: LimitHistoryItem[],
+  opts?: { onlyU?: boolean; rank?: RankItem[] },
+): Stock[] {
+  const onlyU = opts?.onlyU !== false
+  const rank = opts?.rank ?? []
+  const out: Stock[] = []
+  const seen = new Set<string>()
+  for (const h of history) {
+    if (onlyU && historyIsZhaban(h)) continue
+    const code = String(h.股票代码 || '').trim().toUpperCase()
+    if (!code || seen.has(code) || seen.has(shortCode(code))) continue
+    seen.add(code)
+    seen.add(shortCode(code))
+    out.push(mapStock(rankStockFromHistory(h), rank, h))
+  }
+  return out
 }
 
 /** Only emit stats that have real pulse/meta values — no placeholders. */
@@ -333,11 +361,18 @@ export function adaptLadder(history: LimitHistoryItem[]): LadderRow[] {
 
 export function adaptStrong(snapshot: RankSnapshot | null): StrongStock[] {
   if (!snapshot?.rank.length) return []
+  // 与涨停榜一致：limit_up_list / is_limit_up 标记的涨停股不计入强势个股
+  // 服务端已要求昨日首板（连板数=1）；此处仅做当日涨停兜底剔除
+  const limitUpCodes = new Set(
+    (snapshot.limit_up_list ?? []).map((s) => s.stock_code).filter(Boolean),
+  )
   const seen = new Set<string>()
   const out: StrongStock[] = []
   for (const c of snapshot.rank) {
     for (const s of c.stocks) {
       if (seen.has(s.stock_code)) continue
+      if (s.is_limit_up === true) continue
+      if (limitUpCodes.has(s.stock_code)) continue
       seen.add(s.stock_code)
       const pct = s.pct_chg ?? 0
       out.push({
@@ -347,7 +382,7 @@ export function adaptStrong(snapshot: RankSnapshot | null): StrongStock[] {
         pct,
         amount: amountYi(s.amount),
         sector: c.concept_name,
-        score: Math.round(Math.min(99, Math.max(1, pct * 8 + (s.is_limit_up ? 10 : 0)))),
+        score: Math.round(Math.min(99, Math.max(1, pct * 8))),
         tag: c.concept_name,
         reason: s.theme ?? c.reason ?? c.theme ?? `${c.concept_name} · 涨幅 ${pct.toFixed(2)}%`,
         mktCap: circMvYi(s.circ_mv),

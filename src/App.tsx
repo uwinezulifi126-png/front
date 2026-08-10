@@ -38,6 +38,7 @@ export default function App() {
   const [time, setTime] = useState('')
   const [includeChiNext, setIncludeChiNext] = useState(true)
   const [includeStar, setIncludeStar] = useState(true)
+  const [includeBj, setIncludeBj] = useState(true)
 
   useEffect(() => {
     const tick = () => setTime(new Date().toLocaleTimeString('zh-CN', { hour12: false }))
@@ -47,39 +48,59 @@ export default function App() {
   }, [])
 
   const boardOpts: BoardFilterOpts = useMemo(
-    () => ({ includeChiNext, includeStar }),
-    [includeChiNext, includeStar],
+    () => ({ includeChiNext, includeStar, includeBj }),
+    [includeChiNext, includeStar, includeBj],
   )
 
+  // 选中日当日涨停池（limit_up_list + 当日炸板）；封板/炸板/板块用
   const stocks = useMemo(
     () => filterByBoard(feed.stocks, boardOpts),
     [feed.stocks, boardOpts],
   )
+  // 全部 = 相对选中 trade_date 的上一交易日 U 类涨停
+  const yesterdayStocks = useMemo(
+    () => filterByBoard(feed.yesterdayStocks, boardOpts),
+    [feed.yesterdayStocks, boardOpts],
+  )
+  // 封板 = 当日仍涨停（U / locked）；与「当日涨停家数」对齐
+  const lockedStocks = useMemo(
+    () => stocks.filter((s) => s.status === 'locked' || s.status === 'sealed'),
+    [stocks],
+  )
+  const openStocks = useMemo(() => stocks.filter((s) => s.status === 'open'), [stocks])
   const ladder = useMemo(() => filterLadder(feed.ladder, boardOpts), [feed.ladder, boardOpts])
   const strong = useMemo(() => filterStrong(feed.strong, boardOpts), [feed.strong, boardOpts])
 
   // 板过滤 → 概念屏蔽 → 再取涨停前十
   const sectorHeat = useMemo(() => {
     const base =
-      includeChiNext && includeStar
+      includeChiNext && includeStar && includeBj
         ? feed.sectorHeat
         : refineSectorHeat(feed.sectorHeat, stocks)
     return takeTopConcepts(filterBlockedConcepts(base, blocklist.blockedSet), 10)
-  }, [feed.sectorHeat, stocks, includeChiNext, includeStar, blocklist.blockedSet])
+  }, [feed.sectorHeat, stocks, includeChiNext, includeStar, includeBj, blocklist.blockedSet])
 
   const sectorDetail = useMemo(() => {
     const base =
-      includeChiNext && includeStar
+      includeChiNext && includeStar && includeBj
         ? feed.sectorDetail
         : refineSectorDetail(feed.sectorDetail, stocks)
     return takeTopConcepts(filterBlockedConcepts(base, blocklist.blockedSet), 10)
-  }, [feed.sectorDetail, stocks, includeChiNext, includeStar, blocklist.blockedSet])
+  }, [feed.sectorDetail, stocks, includeChiNext, includeStar, includeBj, blocklist.blockedSet])
 
   useEffect(() => {
-    if (selectedStock && !stocks.some((s) => s.code === selectedStock.code)) {
+    const pool =
+      activeTab === 'all'
+        ? yesterdayStocks
+        : activeTab === 'locked'
+          ? lockedStocks
+          : activeTab === 'open'
+            ? openStocks
+            : stocks
+    if (selectedStock && !pool.some((s) => s.code === selectedStock.code)) {
       setSelectedStock(null)
     }
-  }, [stocks, selectedStock])
+  }, [activeTab, stocks, yesterdayStocks, lockedStocks, openStocks, selectedStock])
 
   useEffect(() => {
     if (selectedSector && !sectorHeat.some((s) => s.name === selectedSector)) {
@@ -88,16 +109,18 @@ export default function App() {
   }, [sectorHeat, selectedSector])
 
   const displayStocks =
-    activeTab === 'locked'
-      ? stocks.filter((x) => x.status === 'locked')
-      : activeTab === 'open'
-        ? stocks.filter((x) => x.status === 'open')
-        : stocks
+    activeTab === 'all'
+      ? yesterdayStocks
+      : activeTab === 'locked'
+        ? lockedStocks
+        : activeTab === 'open'
+          ? openStocks
+          : stocks
 
   const tabs: { key: ActiveTab; label: string }[] = [
-    { key: 'all', label: `全部 (${stocks.length})` },
-    { key: 'locked', label: `封板 (${stocks.filter((s) => s.status === 'locked').length})` },
-    { key: 'open', label: `炸板 (${stocks.filter((s) => s.status === 'open').length})` },
+    { key: 'all', label: `全部 (${yesterdayStocks.length})` },
+    { key: 'locked', label: `封板 (${lockedStocks.length})` },
+    { key: 'open', label: `炸板 (${openStocks.length})` },
     { key: 'watchlist', label: `自选 (${watchlist.count})` },
     { key: 'sector', label: '板块' },
     { key: 'concepts', label: '概念列表' },
@@ -107,13 +130,19 @@ export default function App() {
   ]
 
   const todayCount =
-    feed.meta?.market_pulse?.limit_up_count ?? feed.meta?.limit_up_count ?? (stocks.length || null)
+    feed.meta?.market_pulse?.limit_up_count ??
+    feed.meta?.limit_up_count ??
+    (lockedStocks.length || null)
 
   const emptyHint = feed.bootError
     ? feed.bootError
     : feed.loading
       ? '加载中…'
-      : feed.statusMessage || '暂无涨停数据'
+      : activeTab === 'all'
+        ? feed.prevTradeDate
+          ? `暂无 ${feed.prevTradeDate} 涨停历史`
+          : '暂无上一交易日涨停数据'
+        : feed.statusMessage || '暂无涨停数据'
 
   return (
     <div className="app">
@@ -163,6 +192,14 @@ export default function App() {
                   <label className="board-filter">
                     <input
                       type="checkbox"
+                      checked={includeBj}
+                      onChange={(e) => setIncludeBj(e.target.checked)}
+                    />
+                    北交所
+                  </label>
+                  <label className="board-filter">
+                    <input
+                      type="checkbox"
                       checked={includeChiNext}
                       onChange={(e) => setIncludeChiNext(e.target.checked)}
                     />
@@ -201,9 +238,14 @@ export default function App() {
                 feedCatalog={feed.conceptCatalog}
                 custom={blocklist.custom}
                 blockedSet={blocklist.blockedSet}
+                syncError={blocklist.syncError}
                 onToggle={blocklist.toggle}
                 onAddCustom={blocklist.addCustom}
                 onRemoveCustom={blocklist.removeCustom}
+                onRenameCustom={blocklist.renameCustom}
+                onAddCustomMember={blocklist.addCustomMember}
+                onAddCustomMembers={blocklist.addCustomMembers}
+                onRemoveCustomMember={blocklist.removeCustomMember}
               />
             ) : activeTab === 'news' ? (
               <NewsView />

@@ -32,6 +32,17 @@ export interface KlineBar {
   pctChg: number | null
 }
 
+/** 单日 1 分钟分时点（后端 分时行情 / stk_mins） */
+export interface IntradayPoint {
+  time: string
+  price: number
+  open: number | null
+  high: number | null
+  low: number | null
+  volume: number | null
+  amount: number | null
+}
+
 export interface MarketStat {
   label: string
   value: string | number

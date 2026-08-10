@@ -9,12 +9,26 @@ import type {
   PromotionRateResponse,
   RankSnapshot,
 } from '../models/apiTypes'
-import type { KlineBar, NewsItem } from '../types'
+import type { IntradayPoint, KlineBar, NewsItem } from '../types'
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null
+}
+
+/**
+ * Build a URL from an endpoint that may be absolute (http://…) or same-origin
+ * relative (/api/…). `new URL('/api/…')` throws without a base — that broke
+ * calendar/date picker when API_BASE_URL is '' (Vite proxy mode).
+ */
+function toApiUrl(endpoint: string): URL {
+  if (/^https?:\/\//i.test(endpoint)) {
+    return new URL(endpoint)
+  }
+  const base =
+    typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:5174'
+  return new URL(endpoint, base)
 }
 
 export async function fetchLatestRank(signal?: AbortSignal): Promise<RankSnapshot> {
@@ -31,7 +45,7 @@ export async function fetchReplayRank(
   tradeDate: string,
   opts?: { refresh?: boolean; signal?: AbortSignal },
 ): Promise<RankSnapshot> {
-  const url = new URL(endpoints.replay(tradeDate))
+  const url = toApiUrl(endpoints.replay(tradeDate))
   if (opts?.refresh) url.searchParams.set('refresh', 'true')
   const res = await fetch(url.toString(), {
     method: 'GET',
@@ -46,7 +60,7 @@ export async function fetchCalendar(
   limit = 800,
   signal?: AbortSignal,
 ): Promise<CalendarResponse> {
-  const url = new URL(endpoints.calendarRecent)
+  const url = toApiUrl(endpoints.calendarRecent)
   url.searchParams.set('limit', String(limit))
   url.searchParams.set('with_data', 'true')
   const res = await fetch(url.toString(), {
@@ -79,7 +93,7 @@ export async function fetchLimitHistory(
   tradeDate: string,
   signal?: AbortSignal,
 ): Promise<LimitHistoryResponse> {
-  const url = new URL(endpoints.limitHistory)
+  const url = toApiUrl(endpoints.limitHistory)
   url.searchParams.set('trade_date', tradeDate.replace(/-/g, ''))
   const res = await fetch(url.toString(), {
     method: 'GET',
@@ -163,7 +177,7 @@ export async function fetchAlerts(opts: {
   limit?: number
   signal?: AbortSignal
 }): Promise<AlertsResponse> {
-  const url = new URL(endpoints.alerts)
+  const url = toApiUrl(endpoints.alerts)
   if (opts.tradeDate) {
     url.searchParams.set('trade_date', opts.tradeDate.replace(/-/g, ''))
   }
@@ -241,7 +255,7 @@ export async function fetchPromotionRate(
   tradeDate: string,
   signal?: AbortSignal,
 ): Promise<PromotionRateResponse> {
-  const url = new URL(endpoints.promotionRate)
+  const url = toApiUrl(endpoints.promotionRate)
   url.searchParams.set('trade_date', tradeDate.replace(/-/g, ''))
   const res = await fetch(url.toString(), {
     method: 'GET',
@@ -291,7 +305,7 @@ export async function fetchKline(
   tsCode: string,
   opts?: { limit?: number; start?: string; end?: string; signal?: AbortSignal },
 ): Promise<{ tsCode: string; items: KlineBar[] }> {
-  const url = new URL(endpoints.kline(tsCode))
+  const url = toApiUrl(endpoints.kline(tsCode))
   if (opts?.limit != null) url.searchParams.set('limit', String(opts.limit))
   if (opts?.start) url.searchParams.set('start', opts.start.replace(/-/g, ''))
   if (opts?.end) url.searchParams.set('end', opts.end.replace(/-/g, ''))
@@ -346,6 +360,67 @@ export async function fetchKline(
   }
 }
 
+export async function fetchIntraday(
+  tsCode: string,
+  tradeDate: string,
+  opts?: { signal?: AbortSignal },
+): Promise<{
+  tsCode: string
+  tradeDate: string
+  items: IntradayPoint[]
+  source: string | null
+  message: string | null
+}> {
+  const url = toApiUrl(endpoints.intraday(tsCode))
+  url.searchParams.set('trade_date', tradeDate.replace(/-/g, '').slice(0, 8))
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`分时请求失败 (${res.status})`)
+  const json: unknown = await res.json()
+  const root = asRecord(json) ?? {}
+  const pickNum = (r: Record<string, unknown>, keys: string[]): number | null => {
+    for (const k of keys) {
+      const v = r[k]
+      if (typeof v === 'number' && Number.isFinite(v)) return v
+      if (typeof v === 'string' && v.trim() !== '') {
+        const n = Number(v)
+        if (Number.isFinite(n)) return n
+      }
+    }
+    return null
+  }
+  const itemsRaw = root.items
+  const items: IntradayPoint[] = Array.isArray(itemsRaw)
+    ? itemsRaw
+        .map((row) => {
+          const r = asRecord(row) ?? {}
+          const time = String(r['交易时间'] ?? r.trade_time ?? r.time ?? '')
+          const price = pickNum(r, ['收盘价', 'close', 'price'])
+          if (!time || price == null) return null
+          return {
+            time,
+            price,
+            open: pickNum(r, ['开盘价', 'open']),
+            high: pickNum(r, ['最高价', 'high']),
+            low: pickNum(r, ['最低价', 'low']),
+            volume: pickNum(r, ['成交量', 'vol', 'volume']),
+            amount: pickNum(r, ['成交额', 'amount']),
+          } satisfies IntradayPoint
+        })
+        .filter((x): x is IntradayPoint => x != null)
+    : []
+  return {
+    tsCode: String(root.ts_code ?? tsCode).toUpperCase(),
+    tradeDate: String(root.trade_date ?? tradeDate),
+    items,
+    source: typeof root.source === 'string' ? root.source : null,
+    message: typeof root.message === 'string' ? root.message : null,
+  }
+}
+
 export interface ClsTelegraphResponse {
   items: NewsItem[]
   count: number
@@ -390,7 +465,7 @@ export async function fetchClsTelegraph(
     signal?: AbortSignal
   },
 ): Promise<ClsTelegraphResponse> {
-  const url = new URL(endpoints.clsTelegraph)
+  const url = toApiUrl(endpoints.clsTelegraph)
   url.searchParams.set('level', opts?.level ?? 'red')
   url.searchParams.set('days', String(opts?.days ?? 5))
   url.searchParams.set('limit', String(opts?.limit ?? 200))
@@ -447,7 +522,7 @@ export async function fetchClsDepth(
     signal?: AbortSignal
   },
 ): Promise<ClsDepthResponse> {
-  const url = new URL(endpoints.clsDepth)
+  const url = toApiUrl(endpoints.clsDepth)
   url.searchParams.set('id', String(opts?.id ?? 1000))
   if (opts?.days != null) {
     url.searchParams.set('days', String(opts.days))
@@ -519,7 +594,7 @@ export async function fetchClsDepthArticle(
   articleId: number,
   opts?: { ensureFull?: boolean; signal?: AbortSignal },
 ): Promise<NewsItem> {
-  const url = new URL(endpoints.clsDepthArticle(articleId))
+  const url = toApiUrl(endpoints.clsDepthArticle(articleId))
   if (opts?.ensureFull === false) {
     url.searchParams.set('ensure_full', 'false')
   }
@@ -549,6 +624,66 @@ export type ThsConceptsResponse = {
   items: ThsConceptItem[]
 }
 
+export type ConceptMemberItem = {
+  tsCode: string
+  code: string
+  name: string
+}
+
+export type ConceptMembersResponse = {
+  code: string
+  name: string
+  total: number
+  count: number
+  items: ConceptMemberItem[]
+}
+
+/** 同花顺概念成分股（股票概念映射）。limit=0 仅取总数。 */
+export async function fetchConceptMembers(opts: {
+  code?: string
+  name?: string
+  limit?: number
+  offset?: number
+  signal?: AbortSignal
+}): Promise<ConceptMembersResponse> {
+  const url = toApiUrl(endpoints.conceptsMembers)
+  if (opts.code) url.searchParams.set('code', opts.code)
+  if (opts.name) url.searchParams.set('name', opts.name)
+  url.searchParams.set('limit', String(opts.limit ?? 10000))
+  if (opts.offset != null) url.searchParams.set('offset', String(opts.offset))
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts.signal,
+  })
+  if (!res.ok) throw new Error(`概念成分请求失败 (${res.status})`)
+  const root = asRecord(await res.json()) ?? {}
+  const itemsRaw = root.items
+  const items: ConceptMemberItem[] = []
+  if (Array.isArray(itemsRaw)) {
+    for (const row of itemsRaw) {
+      const r = asRecord(row)
+      if (!r) continue
+      const tsCode = String(r.ts_code ?? r.tsCode ?? '').trim().toUpperCase()
+      const code = String(r.code ?? r.symbol ?? '').trim().toUpperCase()
+      const name = String(r.name ?? '').trim()
+      if (!tsCode && !code) continue
+      items.push({
+        tsCode: tsCode || code,
+        code: code || tsCode.split('.')[0] || '',
+        name: name || code || tsCode,
+      })
+    }
+  }
+  return {
+    code: String(root.code ?? opts.code ?? '').trim(),
+    name: String(root.name ?? opts.name ?? '').trim(),
+    total: typeof root.total === 'number' ? root.total : items.length,
+    count: typeof root.count === 'number' ? root.count : items.length,
+    items,
+  }
+}
+
 /** 同花顺概念全量列表（默认 limit 足够一次拉全）。 */
 export async function fetchThsConcepts(opts?: {
   q?: string
@@ -556,7 +691,7 @@ export async function fetchThsConcepts(opts?: {
   offset?: number
   signal?: AbortSignal
 }): Promise<ThsConceptsResponse> {
-  const url = new URL(endpoints.conceptsThs)
+  const url = toApiUrl(endpoints.conceptsThs)
   url.searchParams.set('limit', String(opts?.limit ?? 5000))
   if (opts?.offset != null) url.searchParams.set('offset', String(opts.offset))
   if (opts?.q) url.searchParams.set('q', opts.q)
@@ -590,4 +725,199 @@ export async function fetchThsConcepts(opts?: {
     count: typeof root.count === 'number' ? root.count : items.length,
     items,
   }
+}
+
+export type BlockedConceptsResponse = {
+  items: string[]
+  count: number
+}
+
+function parseBlockedItems(json: unknown): string[] {
+  const root = asRecord(json) ?? {}
+  const itemsRaw = root.items
+  if (!Array.isArray(itemsRaw)) return []
+  const names = itemsRaw
+    .filter((x): x is string => typeof x === 'string')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  return [...new Set(names)]
+}
+
+/** 服务端概念屏蔽名单（全端共享）。 */
+export async function fetchBlockedConcepts(opts?: {
+  signal?: AbortSignal
+}): Promise<BlockedConceptsResponse> {
+  const url = toApiUrl(endpoints.conceptsBlocked)
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`概念屏蔽名单请求失败 (${res.status})`)
+  const items = parseBlockedItems(await res.json())
+  return { items, count: items.length }
+}
+
+/** 全量替换服务端概念屏蔽名单。 */
+export async function putBlockedConcepts(
+  items: string[],
+  opts?: { signal?: AbortSignal },
+): Promise<BlockedConceptsResponse> {
+  const url = toApiUrl(endpoints.conceptsBlocked)
+  const unique = [...new Set(items.map((s) => s.trim()).filter(Boolean))]
+  const res = await fetch(url.toString(), {
+    method: 'PUT',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ items: unique }),
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`概念屏蔽名单保存失败 (${res.status})`)
+  const saved = parseBlockedItems(await res.json())
+  return { items: saved, count: saved.length }
+}
+
+export type CustomConceptMemberDto = {
+  tsCode: string
+  code: string
+  name: string
+}
+
+export type CustomConceptDto = {
+  name: string
+  note?: string
+  members: CustomConceptMemberDto[]
+}
+
+export type CustomConceptsResponse = {
+  items: CustomConceptDto[]
+  count: number
+}
+
+export type StockSearchItem = {
+  tsCode: string
+  code: string
+  name: string
+}
+
+function parseCustomConcepts(json: unknown): CustomConceptDto[] {
+  const root = asRecord(json) ?? {}
+  const itemsRaw = root.items
+  if (!Array.isArray(itemsRaw)) return []
+  const out: CustomConceptDto[] = []
+  const seen = new Set<string>()
+  for (const item of itemsRaw) {
+    const rec = asRecord(item)
+    if (!rec) continue
+    const name = String(rec.name ?? '').trim()
+    if (!name || seen.has(name)) continue
+    seen.add(name)
+    const note = String(rec.note ?? '').trim()
+    const membersRaw = rec.members
+    const members: CustomConceptMemberDto[] = []
+    const seenTs = new Set<string>()
+    if (Array.isArray(membersRaw)) {
+      for (const m of membersRaw) {
+        const mr = asRecord(m)
+        if (!mr) continue
+        const tsCode = String(mr.ts_code ?? mr.tsCode ?? mr.code ?? '')
+          .trim()
+          .toUpperCase()
+        if (!tsCode || seenTs.has(tsCode)) continue
+        seenTs.add(tsCode)
+        const code = String(mr.code ?? mr.symbol ?? tsCode.split('.')[0] ?? '')
+          .trim()
+          .toUpperCase()
+        const mname = String(mr.name ?? '').trim() || code
+        members.push({ tsCode, code, name: mname })
+      }
+    }
+    out.push(note ? { name, note, members } : { name, members })
+  }
+  return out
+}
+
+function toCustomApiPayload(items: CustomConceptDto[]) {
+  return items.map((c) => ({
+    name: c.name,
+    note: c.note,
+    members: c.members.map((m) => ({
+      ts_code: m.tsCode,
+      code: m.code,
+      name: m.name,
+    })),
+  }))
+}
+
+/** 服务端自选概念列表（全端共享）。 */
+export async function fetchCustomConcepts(opts?: {
+  signal?: AbortSignal
+}): Promise<CustomConceptsResponse> {
+  const url = toApiUrl(endpoints.conceptsCustom)
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`自选概念列表请求失败 (${res.status})`)
+  const items = parseCustomConcepts(await res.json())
+  return { items, count: items.length }
+}
+
+/** 全量替换服务端自选概念（含成分股）。 */
+export async function putCustomConcepts(
+  items: CustomConceptDto[],
+  opts?: { signal?: AbortSignal },
+): Promise<CustomConceptsResponse> {
+  const url = toApiUrl(endpoints.conceptsCustom)
+  const res = await fetch(url.toString(), {
+    method: 'PUT',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ items: toCustomApiPayload(items) }),
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`自选概念保存失败 (${res.status})`)
+  const saved = parseCustomConcepts(await res.json())
+  return { items: saved, count: saved.length }
+}
+
+/** 按代码/名称搜索股票字典。 */
+export async function searchStocks(
+  q: string,
+  opts?: { limit?: number; signal?: AbortSignal },
+): Promise<StockSearchItem[]> {
+  const text = q.trim()
+  if (!text) return []
+  const url = toApiUrl(endpoints.stocksSearch)
+  url.searchParams.set('q', text)
+  url.searchParams.set('limit', String(opts?.limit ?? 20))
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`股票搜索失败 (${res.status})`)
+  const root = asRecord(await res.json()) ?? {}
+  const itemsRaw = root.items
+  if (!Array.isArray(itemsRaw)) return []
+  const out: StockSearchItem[] = []
+  for (const item of itemsRaw) {
+    const rec = asRecord(item)
+    if (!rec) continue
+    const tsCode = String(rec.ts_code ?? rec.tsCode ?? '').trim().toUpperCase()
+    const code = String(rec.code ?? rec.symbol ?? '').trim().toUpperCase()
+    const name = String(rec.name ?? '').trim()
+    if (!tsCode && !code) continue
+    out.push({
+      tsCode: tsCode || code,
+      code: code || tsCode.split('.')[0] || '',
+      name: name || code || tsCode,
+    })
+  }
+  return out
 }

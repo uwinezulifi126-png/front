@@ -702,6 +702,38 @@ button:disabled {
   padding-top: 4px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
+.kline-intraday-panel {
+  position: absolute;
+  z-index: 6;
+  pointer-events: none;
+  width: 280px;
+  padding: 8px 10px 10px;
+  background: rgba(15, 19, 24, 0.94);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  font-size: 11px;
+  color: var(--foreground);
+}
+.kline-intraday-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+}
+.kline-intraday-chart {
+  width: 100%;
+  height: 120px;
+}
+.kline-intraday-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 120px;
+  font-size: 12px;
+}
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -1592,6 +1624,10 @@ button:disabled {
 .concept-add-btn:hover {
   background: rgba(246, 173, 85, 0.2);
 }
+.concept-add-btn.active {
+  background: rgba(246, 173, 85, 0.28);
+  border-color: var(--accent);
+}
 .concept-form-error {
   color: var(--up-bright);
   font-size: 12px;
@@ -1638,6 +1674,11 @@ button:disabled {
   gap: 8px;
   cursor: pointer;
   user-select: none;
+  position: relative;
+}
+.concept-switch.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
 }
 .concept-switch input {
   position: absolute;
@@ -1692,6 +1733,127 @@ button:disabled {
 .concept-remove-btn:hover {
   color: var(--up-bright);
   border-color: var(--up);
+}
+.concept-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.concept-table tbody tr.editing td {
+  background: rgba(246, 173, 85, 0.06);
+}
+.concept-member-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(246, 173, 85, 0.04);
+  flex-shrink: 0;
+}
+.concept-member-editor-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.concept-member-editor-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.concept-rename-input {
+  min-width: 140px;
+  max-width: 220px;
+}
+.concept-member-search-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.concept-member-search-row .concept-search {
+  flex: 1;
+  min-width: 220px;
+  max-width: 420px;
+}
+.concept-import-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: rgba(15, 20, 28, 0.45);
+}
+.concept-import-hits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 140px;
+  overflow: auto;
+}
+.concept-import-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(246, 173, 85, 0.35);
+  background: rgba(246, 173, 85, 0.08);
+  font-size: 12px;
+}
+.concept-member-hits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.concept-member-hit {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--foreground);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+.concept-member-hit:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.concept-member-hit:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.concept-member-empty {
+  font-size: 12px;
+}
+.concept-member-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 160px;
+  overflow: auto;
+}
+.concept-member-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 2px;
 }
 
 @media (max-width: 1100px) {

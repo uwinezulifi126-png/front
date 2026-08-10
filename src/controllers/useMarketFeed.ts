@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchCalendar, fetchLimitHistory, fetchReplayRank } from '../api/client'
 import {
   adaptConceptCatalog,
+  adaptHistoryLimitUps,
   adaptLadder,
   adaptSectorDetail,
   adaptSectorHeat,
@@ -11,6 +12,7 @@ import {
   adaptStrong,
 } from '../models/adapt'
 import type { CalendarResponse, LimitHistoryItem, RankSnapshot } from '../models/apiTypes'
+import { resolvePrevTradeDate } from '../utils/tradeDate'
 import { useRankStream } from './useRankStream'
 
 export type ViewKind = 'live' | 'replay'
@@ -21,12 +23,29 @@ export function useMarketFeed() {
   const [viewKind, setViewKind] = useState<ViewKind>('replay')
   const [replaySnap, setReplaySnap] = useState<RankSnapshot | null>(null)
   const [history, setHistory] = useState<LimitHistoryItem[]>([])
+  const [prevHistory, setPrevHistory] = useState<LimitHistoryItem[]>([])
   const [bootError, setBootError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
   const liveEnabled = viewKind === 'live'
   const live = useRankStream(liveEnabled)
+
+  const snapshot = viewKind === 'live' ? live.snapshot : replaySnap
+
+  const prevTradeDate = useMemo(() => {
+    if (!selectedDate) return null
+    return resolvePrevTradeDate(
+      selectedDate,
+      calendar?.dates ?? [],
+      snapshot?.meta.prev_trade_date ?? calendar?.status.prev_trade_date ?? null,
+    )
+  }, [
+    selectedDate,
+    calendar?.dates,
+    calendar?.status.prev_trade_date,
+    snapshot?.meta.prev_trade_date,
+  ])
 
   // Boot calendar → pick live or default replay date (no mock)
   useEffect(() => {
@@ -105,7 +124,18 @@ export function useMarketFeed() {
     return () => ac.abort()
   }, [viewKind, selectedDate, live.lastUpdatedAt])
 
-  const snapshot = viewKind === 'live' ? live.snapshot : replaySnap
+  // 全部 Tab：相对选中日的上一交易日涨停历史（U）
+  useEffect(() => {
+    if (!prevTradeDate) {
+      setPrevHistory([])
+      return
+    }
+    const ac = new AbortController()
+    fetchLimitHistory(prevTradeDate, ac.signal)
+      .then((h) => setPrevHistory(h.items))
+      .catch(() => setPrevHistory([]))
+    return () => ac.abort()
+  }, [prevTradeDate])
 
   const onDateChange = useCallback(
     (d: string) => {
@@ -140,14 +170,23 @@ export function useMarketFeed() {
         setReplaySnap(snap)
         setHistory(hist.items)
       }
+      if (prevTradeDate) {
+        const prev = await fetchLimitHistory(prevTradeDate).catch(() => null)
+        if (prev) setPrevHistory(prev.items)
+      }
     } catch (e) {
       setBootError((e as Error).message)
     } finally {
       setRefreshing(false)
     }
-  }, [selectedDate, viewKind, refreshing])
+  }, [selectedDate, viewKind, refreshing, prevTradeDate])
 
   const stocks = useMemo(() => adaptStocks(snapshot, history), [snapshot, history])
+  /** 上一交易日 U 类涨停（「全部」Tab） */
+  const yesterdayStocks = useMemo(
+    () => adaptHistoryLimitUps(prevHistory, { onlyU: true, rank: snapshot?.rank }),
+    [prevHistory, snapshot?.rank],
+  )
   const stats = useMemo(() => adaptStats(snapshot), [snapshot])
   const sectorHeat = useMemo(() => adaptSectorHeat(snapshot), [snapshot])
   const sectorDetail = useMemo(() => adaptSectorDetail(snapshot), [snapshot])
@@ -168,6 +207,8 @@ export function useMarketFeed() {
     viewKind,
     setViewKind,
     stocks,
+    yesterdayStocks,
+    prevTradeDate,
     stats,
     sectorHeat,
     sectorDetail,

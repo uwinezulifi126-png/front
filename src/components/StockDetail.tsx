@@ -107,7 +107,7 @@ export function StockDetail({
           暂无日线数据，请先同步：python -m jobs.sync_daily_kline --days 60
         </div>
       ) : (
-        <KlineChart bars={bars} height={chartHeight} />
+        <KlineChart bars={bars} tsCode={stock.tsCode} height={chartHeight} />
       )}
     </div>
   )

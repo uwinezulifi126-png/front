@@ -61,6 +61,8 @@ export interface RankStock {
   industry?: string | null
   amount?: number | null
   open_times?: number | null
+  /** Tushare limit_list_d：U=收盘仍涨停，Z=炸板 */
+  limit_type?: string | null
   /** 近 1 分钟涨跌幅%；live 由 collector 价格环缓冲计算 */
   rise_speed?: number | null
 }

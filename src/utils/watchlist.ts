@@ -20,8 +20,8 @@ export function guessTsCode(codeOrTs: string): string {
   if (/^\d{6}\.(SH|SZ|BJ)$/.test(raw)) return raw
   const code = raw.replace(/\.(SH|SZ|BJ)$/, '')
   if (!/^\d{6}$/.test(code)) return raw
+  if (code.startsWith('4') || code.startsWith('8') || code.startsWith('920')) return `${code}.BJ`
   if (code.startsWith('6') || code.startsWith('5') || code.startsWith('9')) return `${code}.SH`
-  if (code.startsWith('4') || code.startsWith('8')) return `${code}.BJ`
   return `${code}.SZ`
 }
 
