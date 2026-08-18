@@ -144,7 +144,7 @@ export function WatchlistFloat({ watchlist, quoteStocks }: WatchlistFloatProps) 
                         pct != null && pct !== 0 ? (pct > 0 ? ' up' : ' down') : ''
                       }`}
                     >
-                      {pct != null && pct !== 0
+                      {pct != null
                         ? `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`
                         : '—'}
                     </td>

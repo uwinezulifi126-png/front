@@ -206,6 +206,7 @@ export function KlineChart({ bars, tsCode, height = 300 }: KlineChartProps) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const hoverKeyRef = useRef<string | null>(null)
+  const fittedLenRef = useRef(0)
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
   const [intraday, setIntraday] = useState<IntradayPanelState | null>(null)
 
@@ -221,6 +222,7 @@ export function KlineChart({ bars, tsCode, height = 300 }: KlineChartProps) {
     cacheRef.current.clear()
     setIntraday(null)
     setTooltip(null)
+    fittedLenRef.current = 0
   }, [tsCode])
 
   useEffect(() => {
@@ -453,7 +455,11 @@ export function KlineChart({ bars, tsCode, height = 300 }: KlineChartProps) {
     if (!candle || !volume || !chart) return
     candle.setData(toCandleData(bars))
     volume.setData(toVolumeData(bars))
-    chart.timeScale().fitContent()
+    // Only re-fit when bar count changes (avoid zoom reset on live OHLC poll).
+    if (bars.length !== fittedLenRef.current) {
+      chart.timeScale().fitContent()
+      fittedLenRef.current = bars.length
+    }
   }, [bars])
 
   const tipBar = tooltip?.bar

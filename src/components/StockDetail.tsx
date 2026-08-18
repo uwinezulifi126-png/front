@@ -5,6 +5,9 @@ import type { KlineBar, Stock } from '../types'
 import { KlineChart } from './KlineChart'
 import { WatchToggle } from './WatchToggle'
 
+/** Refresh live today bar while detail stays open (backend overlays rt_k). */
+const KLINE_LIVE_POLL_MS = 30_000
+
 /** Minimal identity for K-line fetch; full Stock also works. */
 export type StockDetailStock = Pick<Stock, 'tsCode' | 'code' | 'name'>
 
@@ -28,23 +31,54 @@ export function StockDetail({
   const [bars, setBars] = useState<KlineBar[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [liveToday, setLiveToday] = useState(false)
 
   useEffect(() => {
-    const ac = new AbortController()
-    setLoading(true)
-    setError(null)
-    setBars([])
-    void fetchKline(stock.tsCode, { limit: 120, signal: ac.signal })
-      .then((res) => {
-        setBars(res.items)
-        setLoading(false)
-      })
-      .catch((err: unknown) => {
-        if (ac.signal.aborted) return
-        setError(err instanceof Error ? err.message : 'K线加载失败')
-        setLoading(false)
-      })
-    return () => ac.abort()
+    let cancelled = false
+    let pollTimer: ReturnType<typeof setInterval> | null = null
+    let ac: AbortController | null = null
+    const liveRef = { current: false }
+
+    const load = (opts?: { silent?: boolean }) => {
+      ac?.abort()
+      ac = new AbortController()
+      const signal = ac.signal
+      if (!opts?.silent) {
+        setLoading(true)
+        setError(null)
+        setBars([])
+        setLiveToday(false)
+        liveRef.current = false
+      }
+      return fetchKline(stock.tsCode, { limit: 120, signal })
+        .then((res) => {
+          if (cancelled || signal.aborted) return
+          setBars(res.items)
+          liveRef.current = Boolean(res.liveToday)
+          setLiveToday(liveRef.current)
+          setLoading(false)
+        })
+        .catch((err: unknown) => {
+          if (cancelled || signal.aborted) return
+          if (opts?.silent) return
+          setError(err instanceof Error ? err.message : 'K线加载失败')
+          setLoading(false)
+        })
+    }
+
+    void load().then(() => {
+      if (cancelled) return
+      pollTimer = setInterval(() => {
+        if (!liveRef.current) return
+        void load({ silent: true })
+      }, KLINE_LIVE_POLL_MS)
+    })
+
+    return () => {
+      cancelled = true
+      ac?.abort()
+      if (pollTimer) clearInterval(pollTimer)
+    }
   }, [stock.tsCode])
 
   const last = bars.length > 0 ? bars[bars.length - 1] : null
@@ -79,7 +113,10 @@ export function StockDetail({
                     {last.pctChg.toFixed(2)}%
                   </span>
                 )}
-                <span className="muted">日线 · 未复权 · 近 {bars.length} 根</span>
+                <span className="muted">
+                  日线 · 未复权 · 近 {bars.length} 根
+                  {liveToday ? ' · 今日实时（盘中）' : ''}
+                </span>
               </>
             ) : (
               <span className="muted">日线 K 线</span>

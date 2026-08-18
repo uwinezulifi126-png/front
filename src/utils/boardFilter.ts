@@ -46,6 +46,29 @@ function itemCode(item: { code?: string; tsCode?: string }): string {
   return (item.tsCode || item.code || '').trim()
 }
 
+/** Normalize ts_code / short code for membership checks. */
+export function shortBoardCode(codeOrTs: string): string {
+  return codeOrTs.trim().toUpperCase().replace(/\.(SH|SZ|BJ)$/i, '')
+}
+
+/**
+ * Resolve limit-up rows belonging to a concept.
+ * Prefer stock_codes membership (a stock may sit in multiple concepts);
+ * fall back to Stock.sector === name only when codes are absent.
+ */
+export function stocksForSectorCodes(
+  stocks: Stock[],
+  codes: string[] | undefined,
+  fallbackName?: string,
+): Stock[] {
+  if (codes && codes.length > 0) {
+    const set = new Set(codes.map(shortBoardCode).filter(Boolean))
+    return stocks.filter((s) => set.has(shortBoardCode(s.tsCode || s.code)))
+  }
+  if (fallbackName) return stocks.filter((s) => s.sector === fallbackName)
+  return []
+}
+
 /** Filter any list of items that carry `code` and/or `tsCode`. */
 export function filterByBoard<T extends { code?: string; tsCode?: string }>(
   items: T[],
@@ -75,13 +98,11 @@ export function refineSectorHeat(
   filteredStocks: Stock[],
 ): SectorHeatItem[] {
   if (heat.length === 0) return []
-  const counts = new Map<string, number>()
-  for (const s of filteredStocks) {
-    if (!s.sector || s.sector === '—') continue
-    counts.set(s.sector, (counts.get(s.sector) ?? 0) + 1)
-  }
   return heat
-    .map((h) => ({ ...h, count: counts.get(h.name) ?? 0 }))
+    .map((h) => {
+      const sectorStocks = stocksForSectorCodes(filteredStocks, h.stockCodes, h.name)
+      return { ...h, count: sectorStocks.length }
+    })
     .filter((h) => h.count > 0)
     .sort((a, b) => {
       if (b.count !== a.count) return b.count - a.count
@@ -98,7 +119,7 @@ export function refineSectorDetail(
   if (details.length === 0) return []
   return details
     .map((d) => {
-      const sectorStocks = filteredStocks.filter((s) => s.sector === d.name)
+      const sectorStocks = stocksForSectorCodes(filteredStocks, d.stockCodes, d.name)
       if (sectorStocks.length === 0) return null
       const locked = sectorStocks.filter((s) => s.status === 'locked').length
       const open = sectorStocks.filter((s) => s.status === 'open').length

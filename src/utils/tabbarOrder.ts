@@ -2,7 +2,9 @@ import type { ActiveTab } from '../types'
 
 export const TABBAR_ORDER_KEY = 'front.tabbar.order'
 
-/** Keep saved ids that still exist; append any new tab ids at the end (default order). */
+/** Keep saved ids that still exist; append any new tab ids.
+ * New ``movers`` tab is inserted right after ``watchlist`` when first seen.
+ */
 export function normalizeTabOrder(saved: unknown, available: ActiveTab[]): ActiveTab[] {
   const avail = new Set(available)
   const seen = new Set<ActiveTab>()
@@ -19,7 +21,17 @@ export function normalizeTabOrder(saved: unknown, available: ActiveTab[]): Activ
   }
 
   for (const id of available) {
-    if (!seen.has(id)) result.push(id)
+    if (seen.has(id)) continue
+    if (id === 'movers') {
+      const watchIdx = result.indexOf('watchlist')
+      if (watchIdx >= 0) {
+        result.splice(watchIdx + 1, 0, id)
+        seen.add(id)
+        continue
+      }
+    }
+    result.push(id)
+    seen.add(id)
   }
   return result
 }

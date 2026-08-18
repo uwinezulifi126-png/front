@@ -1,6 +1,6 @@
 import type { Stock } from '../types'
 
-/** 近 1 分钟涨跌幅%；无数据时 —，涨红跌绿。 */
+/** 涨速：近 1 分钟动量，不足则相对开盘；无数据时 —，涨红跌绿。 */
 export function RiseSpeedCell({ value }: { value: number | null | undefined }) {
   if (value == null || !Number.isFinite(value)) {
     return <span className="mono muted">—</span>

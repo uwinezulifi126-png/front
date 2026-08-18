@@ -812,6 +812,12 @@ button:disabled {
   color: var(--muted-foreground);
   border-radius: 1px;
 }
+.concept-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 360px;
+}
 
 .badge {
   font-family: 'JetBrains Mono', monospace;
@@ -1653,6 +1659,18 @@ button:disabled {
   flex-direction: column;
   gap: 2px;
 }
+.concept-name-btn {
+  text-align: left;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.concept-name-btn.muted {
+  color: var(--muted-foreground);
+}
+.concept-name-btn:hover,
+.concept-name-btn.active {
+  color: var(--accent);
+}
 .concept-note {
   font-size: 11px;
 }
@@ -1834,6 +1852,18 @@ button:disabled {
 }
 .concept-member-empty {
   font-size: 12px;
+}
+.concept-member-filter {
+  max-width: 200px;
+}
+.concept-member-table-wrap {
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+.concept-member-table {
+  margin: 0;
 }
 .concept-member-list {
   list-style: none;

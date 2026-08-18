@@ -38,6 +38,7 @@ export interface RankMeta {
   live_allowed?: boolean | null
   mode?: FeedMode | string | null
   prev_trade_date?: string | null
+  yest_limit_trade_date?: string | null
   default_replay_date?: string | null
   strong_source?: string | null
   message?: string | null
@@ -63,8 +64,10 @@ export interface RankStock {
   open_times?: number | null
   /** Tushare limit_list_d：U=收盘仍涨停，Z=炸板 */
   limit_type?: string | null
-  /** 近 1 分钟涨跌幅%；live 由 collector 价格环缓冲计算 */
+  /** 涨速 %：live 近 1 分钟动量，不足则相对开盘 */
   rise_speed?: number | null
+  /** 全部概念（「个股」movers 等） */
+  concepts?: { concept_code?: string; concept_name?: string }[] | null
 }
 
 export interface RankItem {
@@ -85,6 +88,13 @@ export interface RankSnapshot {
   rank: RankItem[]
   /** Flat limit-up list from API (may be empty). */
   limit_up_list: RankStock[]
+  /**
+   * Today's session quotes for previous-day limit-up codes (「全部」overlay).
+   * Live: rt_k; replay: daily. Not limited to today's limit-up/strong pools.
+   */
+  yest_limit_quotes?: RankStock[]
+  /** 全市场涨幅>7%（「个股」Tab） */
+  movers_gt7?: RankStock[]
 }
 
 export interface MarketStatus {
@@ -94,6 +104,8 @@ export interface MarketStatus {
   is_trading: boolean
   lunch_break?: boolean | null
   prev_trade_date?: string | null
+  /** 「昨日涨停」as-of date; flips at open-day 09:00 Asia/Shanghai */
+  yest_limit_trade_date?: string | null
   default_replay_date?: string | null
   message?: string | null
 }

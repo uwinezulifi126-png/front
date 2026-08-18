@@ -77,29 +77,29 @@ export const LIMIT_CHAIN_DATA = [
 ]
 
 export const SECTOR_HEAT: SectorHeatItem[] = [
-  { name: '新能源', count: 18, pct: 4.82 },
-  { name: '人工智能', count: 14, pct: 3.91 },
-  { name: '半导体', count: 11, pct: 5.23 },
-  { name: '医药生物', count: 9, pct: 2.14 },
-  { name: '军工', count: 8, pct: 3.67 },
-  { name: '光伏', count: 7, pct: 4.12 },
-  { name: '储能', count: 6, pct: 3.44 },
-  { name: '数据要素', count: 5, pct: 2.88 },
-  { name: '消费电子', count: 4, pct: 1.76 },
-  { name: '低空经济', count: 3, pct: 2.31 },
+  { name: '新能源', count: 18, pct: 4.82, stockCodes: [] },
+  { name: '人工智能', count: 14, pct: 3.91, stockCodes: [] },
+  { name: '半导体', count: 11, pct: 5.23, stockCodes: [] },
+  { name: '医药生物', count: 9, pct: 2.14, stockCodes: [] },
+  { name: '军工', count: 8, pct: 3.67, stockCodes: [] },
+  { name: '光伏', count: 7, pct: 4.12, stockCodes: [] },
+  { name: '储能', count: 6, pct: 3.44, stockCodes: [] },
+  { name: '数据要素', count: 5, pct: 2.88, stockCodes: [] },
+  { name: '消费电子', count: 4, pct: 1.76, stockCodes: [] },
+  { name: '低空经济', count: 3, pct: 2.31, stockCodes: [] },
 ]
 
 export const SECTOR_DETAIL: SectorDetail[] = [
-  { name: '新能源', count: 18, locked: 14, open: 4, avgStrength: 88, topStock: '宁德时代', topPct: 10.0, amount: 86.4, leadingStocks: ['宁德时代', '比亚迪', '亿纬锂能', '赛力斯', '天合光能'] },
-  { name: '人工智能', count: 14, locked: 10, open: 4, avgStrength: 79, topStock: '中际旭创', topPct: 10.0, amount: 48.2, leadingStocks: ['中际旭创', '海康威视', '奇安信', '科大讯飞', '寒武纪'] },
-  { name: '半导体', count: 11, locked: 9, open: 2, avgStrength: 83, topStock: '海光信息', topPct: 10.0, amount: 32.7, leadingStocks: ['海光信息', '紫光国微', '中芯国际', '北方华创', '澜起科技'] },
-  { name: '医药生物', count: 9, locked: 6, open: 3, avgStrength: 61, topStock: '迈瑞医疗', topPct: 10.0, amount: 21.3, leadingStocks: ['迈瑞医疗', '药明康德', '恒瑞医药', '爱尔眼科', '片仔癀'] },
-  { name: '军工', count: 8, locked: 7, open: 1, avgStrength: 85, topStock: '中航沈飞', topPct: 10.0, amount: 18.9, leadingStocks: ['中航沈飞', '航天电子', '中国重工', '航发动力', '北方导航'] },
-  { name: '光伏', count: 7, locked: 6, open: 1, avgStrength: 91, topStock: '天合光能', topPct: 10.0, amount: 24.1, leadingStocks: ['天合光能', '晶科能源', '隆基绿能', '通威股份', '阳光电源'] },
-  { name: '储能', count: 6, locked: 4, open: 2, avgStrength: 72, topStock: '长江电力', topPct: 10.0, amount: 16.3, leadingStocks: ['长江电力', '南都电源', '鹏辉能源', '派能科技', '科陆电子'] },
-  { name: '数据要素', count: 5, locked: 4, open: 1, avgStrength: 77, topStock: '东方财富', topPct: 10.0, amount: 19.8, leadingStocks: ['东方财富', '同花顺', '大智慧', '财富趋势', '恒生电子'] },
-  { name: '消费电子', count: 4, locked: 2, open: 2, avgStrength: 54, topStock: '贵州茅台', topPct: 10.0, amount: 22.4, leadingStocks: ['贵州茅台', '五粮液', '歌尔股份', '立讯精密'] },
-  { name: '低空经济', count: 3, locked: 3, open: 0, avgStrength: 90, topStock: '中直股份', topPct: 10.0, amount: 8.6, leadingStocks: ['中直股份', '万丰奥威', '宗申动力'] },
+  { name: '新能源', count: 18, locked: 14, open: 4, avgStrength: 88, topStock: '宁德时代', topPct: 10.0, amount: 86.4, leadingStocks: ['宁德时代', '比亚迪', '亿纬锂能', '赛力斯', '天合光能'], stockCodes: [] },
+  { name: '人工智能', count: 14, locked: 10, open: 4, avgStrength: 79, topStock: '中际旭创', topPct: 10.0, amount: 48.2, leadingStocks: ['中际旭创', '海康威视', '奇安信', '科大讯飞', '寒武纪'], stockCodes: [] },
+  { name: '半导体', count: 11, locked: 9, open: 2, avgStrength: 83, topStock: '海光信息', topPct: 10.0, amount: 32.7, leadingStocks: ['海光信息', '紫光国微', '中芯国际', '北方华创', '澜起科技'], stockCodes: [] },
+  { name: '医药生物', count: 9, locked: 6, open: 3, avgStrength: 61, topStock: '迈瑞医疗', topPct: 10.0, amount: 21.3, leadingStocks: ['迈瑞医疗', '药明康德', '恒瑞医药', '爱尔眼科', '片仔癀'], stockCodes: [] },
+  { name: '军工', count: 8, locked: 7, open: 1, avgStrength: 85, topStock: '中航沈飞', topPct: 10.0, amount: 18.9, leadingStocks: ['中航沈飞', '航天电子', '中国重工', '航发动力', '北方导航'], stockCodes: [] },
+  { name: '光伏', count: 7, locked: 6, open: 1, avgStrength: 91, topStock: '天合光能', topPct: 10.0, amount: 24.1, leadingStocks: ['天合光能', '晶科能源', '隆基绿能', '通威股份', '阳光电源'], stockCodes: [] },
+  { name: '储能', count: 6, locked: 4, open: 2, avgStrength: 72, topStock: '长江电力', topPct: 10.0, amount: 16.3, leadingStocks: ['长江电力', '南都电源', '鹏辉能源', '派能科技', '科陆电子'], stockCodes: [] },
+  { name: '数据要素', count: 5, locked: 4, open: 1, avgStrength: 77, topStock: '东方财富', topPct: 10.0, amount: 19.8, leadingStocks: ['东方财富', '同花顺', '大智慧', '财富趋势', '恒生电子'], stockCodes: [] },
+  { name: '消费电子', count: 4, locked: 2, open: 2, avgStrength: 54, topStock: '贵州茅台', topPct: 10.0, amount: 22.4, leadingStocks: ['贵州茅台', '五粮液', '歌尔股份', '立讯精密'], stockCodes: [] },
+  { name: '低空经济', count: 3, locked: 3, open: 0, avgStrength: 90, topStock: '中直股份', topPct: 10.0, amount: 8.6, leadingStocks: ['中直股份', '万丰奥威', '宗申动力'], stockCodes: [] },
 ]
 
 export const ALERTS: AlertItem[] = [

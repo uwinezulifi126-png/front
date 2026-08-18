@@ -4,6 +4,7 @@ import { ConceptListView } from './components/ConceptListView'
 import { LadderView } from './components/LadderView'
 import { LimitChain } from './components/LimitChain'
 import { LimitUpTable } from './components/LimitUpTable'
+import { MoversView } from './components/MoversView'
 import { NewsView } from './components/NewsView'
 import { RightPanel } from './components/RightPanel'
 import { SectorPanel } from './components/SectorPanel'
@@ -17,6 +18,7 @@ import { WatchlistView } from './components/WatchlistView'
 import { useMarketFeed } from './controllers/useMarketFeed'
 import { useConceptBlocklist } from './hooks/useConceptBlocklist'
 import { useWatchlist } from './hooks/useWatchlist'
+import { useWatchlistQuotes } from './hooks/useWatchlistQuotes'
 import type { ActiveTab, Stock } from './types'
 import {
   filterByBoard,
@@ -39,6 +41,14 @@ export default function App() {
   const [includeChiNext, setIncludeChiNext] = useState(true)
   const [includeStar, setIncludeStar] = useState(true)
   const [includeBj, setIncludeBj] = useState(true)
+  const watchQuotes = useWatchlistQuotes({
+    items: watchlist.items,
+    snapshot: feed.snapshot,
+    // live/午休：拉今日 rt_k 成交额；复盘日仅用 snapshot 当日 amount
+    enabled:
+      feed.viewKind === 'live' &&
+      (activeTab === 'watchlist' || watchlist.floatState.open),
+  })
 
   useEffect(() => {
     const tick = () => setTime(new Date().toLocaleTimeString('zh-CN', { hour12: false }))
@@ -57,7 +67,7 @@ export default function App() {
     () => filterByBoard(feed.stocks, boardOpts),
     [feed.stocks, boardOpts],
   )
-  // 全部 = 相对选中 trade_date 的上一交易日 U 类涨停
+  // 昨日涨停 = 相对选中 trade_date 的上一交易日 U 类涨停
   const yesterdayStocks = useMemo(
     () => filterByBoard(feed.yesterdayStocks, boardOpts),
     [feed.yesterdayStocks, boardOpts],
@@ -67,26 +77,22 @@ export default function App() {
     () => stocks.filter((s) => s.status === 'locked' || s.status === 'sealed'),
     [stocks],
   )
+  // 炸板 = 当日曾涨停但当前未封住；membership 不看 pct（无 >7% 门槛）
   const openStocks = useMemo(() => stocks.filter((s) => s.status === 'open'), [stocks])
   const ladder = useMemo(() => filterLadder(feed.ladder, boardOpts), [feed.ladder, boardOpts])
   const strong = useMemo(() => filterStrong(feed.strong, boardOpts), [feed.strong, boardOpts])
+  const movers = useMemo(() => filterByBoard(feed.movers, boardOpts), [feed.movers, boardOpts])
 
-  // 板过滤 → 概念屏蔽 → 再取涨停前十
+  // 板过滤后按 stock_codes ∩ 可见涨停池重算家数（一股可属多概念）→ 概念屏蔽 → 涨停前十
   const sectorHeat = useMemo(() => {
-    const base =
-      includeChiNext && includeStar && includeBj
-        ? feed.sectorHeat
-        : refineSectorHeat(feed.sectorHeat, stocks)
+    const base = refineSectorHeat(feed.sectorHeat, stocks)
     return takeTopConcepts(filterBlockedConcepts(base, blocklist.blockedSet), 10)
-  }, [feed.sectorHeat, stocks, includeChiNext, includeStar, includeBj, blocklist.blockedSet])
+  }, [feed.sectorHeat, stocks, blocklist.blockedSet])
 
   const sectorDetail = useMemo(() => {
-    const base =
-      includeChiNext && includeStar && includeBj
-        ? feed.sectorDetail
-        : refineSectorDetail(feed.sectorDetail, stocks)
+    const base = refineSectorDetail(feed.sectorDetail, stocks)
     return takeTopConcepts(filterBlockedConcepts(base, blocklist.blockedSet), 10)
-  }, [feed.sectorDetail, stocks, includeChiNext, includeStar, includeBj, blocklist.blockedSet])
+  }, [feed.sectorDetail, stocks, blocklist.blockedSet])
 
   useEffect(() => {
     const pool =
@@ -118,10 +124,11 @@ export default function App() {
           : stocks
 
   const tabs: { key: ActiveTab; label: string }[] = [
-    { key: 'all', label: `全部 (${yesterdayStocks.length})` },
+    { key: 'all', label: `昨日涨停 (${yesterdayStocks.length})` },
     { key: 'locked', label: `封板 (${lockedStocks.length})` },
     { key: 'open', label: `炸板 (${openStocks.length})` },
     { key: 'watchlist', label: `自选 (${watchlist.count})` },
+    { key: 'movers', label: `个股 (${movers.length})` },
     { key: 'sector', label: '板块' },
     { key: 'concepts', label: '概念列表' },
     { key: 'news', label: '财经新闻' },
@@ -223,8 +230,14 @@ export default function App() {
             {activeTab === 'watchlist' ? (
               <WatchlistView
                 watchlist={watchlist}
-                quoteStocks={feed.stocks}
+                quoteStocks={watchQuotes}
                 onOpenFloat={watchlist.openFloat}
+              />
+            ) : activeTab === 'movers' ? (
+              <MoversView
+                data={movers}
+                isWatched={watchlist.isWatched}
+                onToggleWatch={watchlist.toggle}
               />
             ) : activeTab === 'sector' ? (
               <SectorView
@@ -246,6 +259,9 @@ export default function App() {
                 onAddCustomMember={blocklist.addCustomMember}
                 onAddCustomMembers={blocklist.addCustomMembers}
                 onRemoveCustomMember={blocklist.removeCustomMember}
+                memberOverrides={blocklist.memberOverrides}
+                onAddOfficialMember={blocklist.addOfficialMember}
+                onRemoveOfficialMember={blocklist.removeOfficialMember}
               />
             ) : activeTab === 'news' ? (
               <NewsView />
@@ -281,7 +297,7 @@ export default function App() {
         <RightPanel sentiment={feed.sentiment} selectedDate={feed.selectedDate} />
       </div>
 
-      <WatchlistFloat watchlist={watchlist} quoteStocks={feed.stocks} />
+      <WatchlistFloat watchlist={watchlist} quoteStocks={watchQuotes} />
 
       <footer className="footer">
         <span>数据仅供参考，不构成投资建议 · 交易有风险，投资须谨慎</span>

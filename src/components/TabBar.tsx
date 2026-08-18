@@ -22,7 +22,17 @@ function mergeOrder(prev: ActiveTab[], available: ActiveTab[]): ActiveTab[] {
     out.push(id)
   }
   for (const id of available) {
-    if (!seen.has(id)) out.push(id)
+    if (seen.has(id)) continue
+    if (id === 'movers') {
+      const watchIdx = out.indexOf('watchlist')
+      if (watchIdx >= 0) {
+        out.splice(watchIdx + 1, 0, id)
+        seen.add(id)
+        continue
+      }
+    }
+    out.push(id)
+    seen.add(id)
   }
   return out
 }

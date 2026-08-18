@@ -4,6 +4,7 @@ import {
   adaptConceptCatalog,
   adaptHistoryLimitUps,
   adaptLadder,
+  adaptMovers,
   adaptSectorDetail,
   adaptSectorHeat,
   adaptSentiment,
@@ -12,7 +13,7 @@ import {
   adaptStrong,
 } from '../models/adapt'
 import type { CalendarResponse, LimitHistoryItem, RankSnapshot } from '../models/apiTypes'
-import { resolvePrevTradeDate } from '../utils/tradeDate'
+import { resolveYestLimitTradeDate } from '../utils/tradeDate'
 import { useRankStream } from './useRankStream'
 
 export type ViewKind = 'live' | 'replay'
@@ -33,17 +34,27 @@ export function useMarketFeed() {
 
   const snapshot = viewKind === 'live' ? live.snapshot : replaySnap
 
+  // 「昨日涨停」: today view uses backend 09:00 rollover date; replay stays relative.
   const prevTradeDate = useMemo(() => {
     if (!selectedDate) return null
-    return resolvePrevTradeDate(
-      selectedDate,
-      calendar?.dates ?? [],
-      snapshot?.meta.prev_trade_date ?? calendar?.status.prev_trade_date ?? null,
-    )
+    return resolveYestLimitTradeDate({
+      selected: selectedDate,
+      dates: calendar?.dates ?? [],
+      today: calendar?.status.trade_date,
+      yestLimitTradeDate:
+        calendar?.status.yest_limit_trade_date ??
+        snapshot?.meta.yest_limit_trade_date ??
+        null,
+      fallbackPrev:
+        snapshot?.meta.prev_trade_date ?? calendar?.status.prev_trade_date ?? null,
+    })
   }, [
     selectedDate,
     calendar?.dates,
+    calendar?.status.trade_date,
+    calendar?.status.yest_limit_trade_date,
     calendar?.status.prev_trade_date,
+    snapshot?.meta.yest_limit_trade_date,
     snapshot?.meta.prev_trade_date,
   ])
 
@@ -78,6 +89,40 @@ export function useMarketFeed() {
     })()
     return () => ac.abort()
   }, [])
+
+  // Poll calendar so yest_limit_trade_date flips at open-day 09:00 without reload
+  useEffect(() => {
+    if (!calendar) return
+    const ac = new AbortController()
+    const tick = () => {
+      fetchCalendar(800, ac.signal)
+        .then((cal) => setCalendar(cal))
+        .catch(() => {
+          /* keep last calendar */
+        })
+    }
+    // ~60s near rollover window; otherwise every 5 min
+    let ticks = 0
+    const id = window.setInterval(() => {
+      ticks += 1
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Shanghai',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).formatToParts(new Date())
+      const hh = Number(parts.find((p) => p.type === 'hour')?.value ?? '0')
+      const mm = Number(parts.find((p) => p.type === 'minute')?.value ?? '0')
+      const mins = hh * 60 + mm
+      // 08:50–09:15: every minute; else every 5th tick (~5 min)
+      const nearRollover = mins >= 8 * 60 + 50 && mins <= 9 * 60 + 15
+      if (nearRollover || ticks % 5 === 0) tick()
+    }, 60_000)
+    return () => {
+      ac.abort()
+      window.clearInterval(id)
+    }
+  }, [calendar?.status.trade_date])
 
   // Replay / history load when date or view changes
   useEffect(() => {
@@ -114,7 +159,8 @@ export function useMarketFeed() {
     return () => ac.abort()
   }, [selectedDate, viewKind])
 
-  // Live mode: also try limit-history for today (may be empty pre-EOD)
+  // Live mode: today's limit-history once per date (empty until EOD).
+  // Do not refetch on every rank SSE tick — pct comes from the snapshot.
   useEffect(() => {
     if (viewKind !== 'live' || !selectedDate) return
     const ac = new AbortController()
@@ -122,9 +168,9 @@ export function useMarketFeed() {
       .then((h) => setHistory(h.items))
       .catch(() => setHistory([]))
     return () => ac.abort()
-  }, [viewKind, selectedDate, live.lastUpdatedAt])
+  }, [viewKind, selectedDate])
 
-  // 全部 Tab：相对选中日的上一交易日涨停历史（U）
+  // 「昨日涨停」Tab：U 类涨停历史（日期由 09:00 rollover / 复盘相对日决定）
   useEffect(() => {
     if (!prevTradeDate) {
       setPrevHistory([])
@@ -154,6 +200,8 @@ export function useMarketFeed() {
     if (!selectedDate || refreshing) return
     setRefreshing(true)
     try {
+      const cal = await fetchCalendar(800).catch(() => null)
+      if (cal) setCalendar(cal)
       if (viewKind === 'live') {
         // SSE/poll will refresh; optionally nudge latest via re-enable is enough
         const hist = await fetchLimitHistory(selectedDate).catch(() => null)
@@ -170,8 +218,21 @@ export function useMarketFeed() {
         setReplaySnap(snap)
         setHistory(hist.items)
       }
-      if (prevTradeDate) {
-        const prev = await fetchLimitHistory(prevTradeDate).catch(() => null)
+      const yestDate = resolveYestLimitTradeDate({
+        selected: selectedDate,
+        dates: (cal ?? calendar)?.dates ?? [],
+        today: (cal ?? calendar)?.status.trade_date,
+        yestLimitTradeDate:
+          (cal ?? calendar)?.status.yest_limit_trade_date ??
+          snapshot?.meta.yest_limit_trade_date ??
+          null,
+        fallbackPrev:
+          snapshot?.meta.prev_trade_date ??
+          (cal ?? calendar)?.status.prev_trade_date ??
+          null,
+      })
+      if (yestDate) {
+        const prev = await fetchLimitHistory(yestDate).catch(() => null)
         if (prev) setPrevHistory(prev.items)
       }
     } catch (e) {
@@ -179,20 +240,25 @@ export function useMarketFeed() {
     } finally {
       setRefreshing(false)
     }
-  }, [selectedDate, viewKind, refreshing, prevTradeDate])
+  }, [selectedDate, viewKind, refreshing, calendar, snapshot])
 
   const stocks = useMemo(() => adaptStocks(snapshot, history), [snapshot, history])
-  /** 上一交易日 U 类涨停（「全部」Tab） */
+  /** 上一交易日 U 类涨停（「昨日涨停」Tab）；涨幅/现价叠加热快照 yest_limit_quotes */
   const yesterdayStocks = useMemo(
-    () => adaptHistoryLimitUps(prevHistory, { onlyU: true, rank: snapshot?.rank }),
-    [prevHistory, snapshot?.rank],
+    () => adaptHistoryLimitUps(prevHistory, { onlyU: true, snapshot }),
+    [prevHistory, snapshot],
   )
   const stats = useMemo(() => adaptStats(snapshot), [snapshot])
   const sectorHeat = useMemo(() => adaptSectorHeat(snapshot), [snapshot])
   const sectorDetail = useMemo(() => adaptSectorDetail(snapshot), [snapshot])
   const conceptCatalog = useMemo(() => adaptConceptCatalog(snapshot), [snapshot])
-  const ladder = useMemo(() => adaptLadder(history), [history])
+  // 盘中当日 limit-history 多半为空：用 live 封板 + 昨日 U 推算连板
+  const ladder = useMemo(
+    () => adaptLadder(history, { snapshot, prevHistory }),
+    [history, snapshot, prevHistory],
+  )
   const strong = useMemo(() => adaptStrong(snapshot), [snapshot])
+  const movers = useMemo(() => adaptMovers(snapshot), [snapshot])
   const sentiment = useMemo(() => adaptSentiment(snapshot), [snapshot])
 
   const statusMessage =
@@ -215,6 +281,7 @@ export function useMarketFeed() {
     conceptCatalog,
     ladder,
     strong,
+    movers,
     sentiment,
     history,
     loading,
@@ -225,5 +292,6 @@ export function useMarketFeed() {
     connectionMode: viewKind === 'live' ? live.mode : 'replay',
     statusMessage,
     meta: snapshot?.meta ?? null,
+    snapshot,
   }
 }

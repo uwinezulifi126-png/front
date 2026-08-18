@@ -3,6 +3,7 @@ import type {
   ConceptCatalogItem,
   LadderRow,
   MarketStat,
+  MoverStock,
   SectorDetail,
   SectorHeatItem,
   Stock,
@@ -24,17 +25,24 @@ function formatLimitTime(raw: string | null | undefined): string {
   return `${hh}:${mm}:${ss}`
 }
 
-function amountYi(raw: number | null | undefined): number {
-  if (raw == null || !Number.isFinite(raw)) return 0
-  // history 成交额 often in 元; live may already be smaller units — heuristic
+/** Convert raw turnover to 亿元. rt_k/limit_list≈元; daily≈千元. */
+export function amountYi(raw: number | null | undefined): number {
+  if (raw == null || !Number.isFinite(raw) || raw <= 0) return 0
+  // history / rt_k 成交额 often in 元; daily 千元 — heuristic
   if (raw >= 1e6) return +(raw / 1e8).toFixed(2)
   if (raw >= 100) return +(raw / 1e4).toFixed(2)
   return +raw.toFixed(2)
 }
 
-function circMvYi(raw: number | null | undefined): number {
+/** Tushare / DB circ_mv is 万元 → 亿元 for display. */
+export function circMvYi(raw: number | null | undefined): number {
   if (raw == null || !Number.isFinite(raw)) return 0
-  // 流通市值 DB: 万元
+  return +(raw / 1e4).toFixed(1)
+}
+
+/** Same conversion; null when missing/non-positive (watchlist cells). */
+export function circMvYiOrNull(raw: number | null | undefined): number | null {
+  if (raw == null || !Number.isFinite(raw) || raw <= 0) return null
   return +(raw / 1e4).toFixed(1)
 }
 
@@ -71,8 +79,9 @@ function lookupHistory(
 
 /**
  * 炸板口径：以「当前/最终是否仍封住涨停」为准，不是「曾经打开过」。
- * - 仍封板 / 涨停收盘（涨停类型=U）→ 不算炸板（即使打开次数>0）
- * - 炸板（涨停类型=Z）→ 炸板
+ * - 仍封板 / 涨停收盘（涨停类型=U）→ 不算炸板（即使打开次数>0）→ status locked
+ * - 炸板（涨停类型=Z / is_limit_up=false）→ status open
+ * - **无涨幅门槛**：开板后 pct 跌破 7%（甚至更低）仍保留在炸板 Tab
  *
  * 涨停历史入库 limit_list_d 的 U + Z；优先读 涨停类型。
  */
@@ -143,6 +152,7 @@ function mapStock(s: RankStock, rank: RankItem[], hist?: LimitHistoryItem | null
     strength: null,
     bidAmount: null,
     riseSpeed: s.rise_speed ?? null,
+    mktCap: circMvYiOrNull(s.circ_mv),
   }
 }
 
@@ -186,16 +196,89 @@ export function adaptStocks(
   return history.map((h) => mapStock(rankStockFromHistory(h), snapshot.rank, h))
 }
 
+/** Build ts_code / short-code → quote from today's live/replay snapshot. */
+function indexSnapshotQuotes(snapshot: RankSnapshot | null): Map<string, RankStock> {
+  const map = new Map<string, RankStock>()
+  if (!snapshot) return map
+
+  const put = (s: RankStock) => {
+    const code = String(s.stock_code || '').trim().toUpperCase()
+    if (!code) return
+    const prev = map.get(code)
+    // Prefer the side that already has pct when the same code appears twice
+    const chosen =
+      prev == null ? s : s.pct_chg != null && prev.pct_chg == null ? s : prev
+    map.set(code, chosen)
+    map.set(shortCode(code), chosen)
+  }
+
+  // Prefer dedicated prev-day-limit quotes (covers「全部」beyond today's LU/strong)
+  for (const s of snapshot.yest_limit_quotes ?? []) put(s)
+  for (const s of snapshot.limit_up_list ?? []) put(s)
+  for (const s of snapshot.movers_gt7 ?? []) put(s)
+  for (const c of snapshot.rank ?? []) {
+    for (const s of c.stocks) put(s)
+  }
+  return map
+}
+
+/** Flatten snapshot quote pools to Stock[] for watchlist overlay. */
+export function quotesFromSnapshot(snapshot: RankSnapshot | null): Stock[] {
+  if (!snapshot) return []
+  const map = indexSnapshotQuotes(snapshot)
+  const out: Stock[] = []
+  const seen = new Set<string>()
+  for (const [key, s] of map) {
+    if (!key.includes('.')) continue
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(mapStock(s, snapshot.rank ?? []))
+  }
+  return out
+}
+
+function lookupQuote(
+  map: Map<string, RankStock>,
+  code: string,
+): RankStock | undefined {
+  const upper = String(code || '').trim().toUpperCase()
+  if (!upper) return undefined
+  return map.get(upper) ?? map.get(shortCode(upper))
+}
+
+/** Overlay today's pct/price/amount/riseSpeed onto a history-based row. */
+function overlayLiveQuote(stock: Stock, quote: RankStock): Stock {
+  const next = { ...stock }
+  if (quote.pct_chg != null && Number.isFinite(quote.pct_chg)) {
+    next.pct = quote.pct_chg
+  }
+  if (quote.close != null && Number.isFinite(quote.close) && quote.close > 0) {
+    next.price = quote.close
+  }
+  if (quote.amount != null && Number.isFinite(quote.amount)) {
+    next.amount = amountYi(quote.amount)
+  }
+  if (quote.rise_speed != null && Number.isFinite(quote.rise_speed)) {
+    next.riseSpeed = quote.rise_speed
+  }
+  const mv = circMvYiOrNull(quote.circ_mv)
+  if (mv != null) next.mktCap = mv
+  return next
+}
+
 /**
  * 「全部」Tab：上一交易日涨停历史 → Stock[]。
- * 默认只保留 U（收盘仍涨停）；Z 炸板排除。缺实时字段时用历史字段 / mapStock 默认值。
+ * 默认只保留 U（收盘仍涨停）；Z 炸板排除。
+ * 名单/板块/涨停时间等来自历史；涨幅/现价/成交额优先叠加热 feed
+ * （yest_limit_quotes / limit_up_list / rank strong）。
  */
 export function adaptHistoryLimitUps(
   history: LimitHistoryItem[],
-  opts?: { onlyU?: boolean; rank?: RankItem[] },
+  opts?: { onlyU?: boolean; rank?: RankItem[]; snapshot?: RankSnapshot | null },
 ): Stock[] {
   const onlyU = opts?.onlyU !== false
-  const rank = opts?.rank ?? []
+  const rank = opts?.rank ?? opts?.snapshot?.rank ?? []
+  const quotes = indexSnapshotQuotes(opts?.snapshot ?? null)
   const out: Stock[] = []
   const seen = new Set<string>()
   for (const h of history) {
@@ -204,7 +287,9 @@ export function adaptHistoryLimitUps(
     if (!code || seen.has(code) || seen.has(shortCode(code))) continue
     seen.add(code)
     seen.add(shortCode(code))
-    out.push(mapStock(rankStockFromHistory(h), rank, h))
+    const base = mapStock(rankStockFromHistory(h), rank, h)
+    const live = lookupQuote(quotes, code)
+    out.push(live ? overlayLiveQuote(base, live) : base)
   }
   return out
 }
@@ -257,6 +342,7 @@ export function adaptSectorHeat(snapshot: RankSnapshot | null): SectorHeatItem[]
       name: c.concept_name,
       count: c.limit_up_count,
       pct: pct ?? 0,
+      stockCodes: [...c.stock_codes],
     }
   })
   rows.sort((a, b) => {
@@ -264,7 +350,7 @@ export function adaptSectorHeat(snapshot: RankSnapshot | null): SectorHeatItem[]
     if (b.pct !== a.pct) return b.pct - a.pct
     return a.name.localeCompare(b.name)
   })
-  return rows.map(({ name, count, pct }) => ({ name, count, pct }))
+  return rows
 }
 
 /**
@@ -290,6 +376,7 @@ export function adaptSectorDetail(snapshot: RankSnapshot | null): SectorDetail[]
       topPct: top?.pct_chg ?? 0,
       amount: 0,
       leadingStocks: leading,
+      stockCodes: [...c.stock_codes],
       _pct: pct ?? 0,
     }
   })
@@ -330,22 +417,104 @@ const LADDER_COLORS = [
   '#ff8a65', '#ffa726', '#ffca28', '#9e9e9e', '#78909c',
 ]
 
-export function adaptLadder(history: LimitHistoryItem[]): LadderRow[] {
-  if (!history.length) return []
-  const byBoard = new Map<number, LimitHistoryItem[]>()
-  for (const h of history) {
-    const boards = Math.max(1, Math.round(h.连板数 ?? 1))
-    const list = byBoard.get(boards) ?? []
-    list.push(h)
-    byBoard.set(boards, list)
-  }
+const LADDER_LABELS = ['', '首板', '二板', '三板', '四板', '五板', '六板', '七板', '八板', '九板']
+
+function ladderLabel(boards: number): string {
+  return boards >= 10 ? `${boards}板` : LADDER_LABELS[boards] ?? `${boards}板`
+}
+
+function ladderRowsFromGroups(
+  byBoard: Map<number, LadderRow['stocks']>,
+): LadderRow[] {
   return [...byBoard.entries()]
     .sort((a, b) => b[0] - a[0])
-    .map(([boards, items], i) => ({
+    .map(([boards, stocks], i) => ({
       boards,
-      label: boards >= 10 ? `${boards}板` : ['', '首板', '二板', '三板', '四板', '五板', '六板', '七板', '八板', '九板'][boards] ?? `${boards}板`,
+      label: ladderLabel(boards),
       color: LADDER_COLORS[Math.min(i, LADDER_COLORS.length - 1)],
-      stocks: items.map((h) => ({
+      stocks,
+    }))
+}
+
+function liveStockIsZhaban(s: RankStock): boolean {
+  if (s.is_limit_up === false) return true
+  const limitType = String(s.limit_type ?? '')
+    .trim()
+    .toUpperCase()
+  return limitType === 'Z'
+}
+
+/**
+ * 盘中连板：昨日涨停历史 U 的连板数 +1（今日仍在 limit_up_list）；
+ * 昨日无 U → 首板；盘中炸板保留并标 zhaban。
+ * 不依赖当日 EOD 涨停历史。
+ */
+function adaptLiveLadder(
+  snapshot: RankSnapshot,
+  prevHistory: LimitHistoryItem[],
+): LadderRow[] {
+  const liveList = snapshot.limit_up_list ?? []
+  if (!liveList.length) return []
+
+  // 仅昨日收盘仍涨停（U）可延续连板；炸板 Z 断板
+  const prevU = historyIndex(prevHistory.filter((h) => !historyIsZhaban(h)))
+  const byBoard = new Map<number, LadderRow['stocks']>()
+
+  for (const s of liveList) {
+    const code = String(s.stock_code || '').trim()
+    if (!code) continue
+
+    let boards: number
+    if (s.limit_times != null && Number.isFinite(s.limit_times) && s.limit_times > 0) {
+      boards = Math.max(1, Math.round(s.limit_times))
+    } else {
+      const yest = lookupHistory(prevU, code)
+      const yestBoards =
+        yest?.连板数 != null && Number.isFinite(yest.连板数)
+          ? Math.max(1, Math.round(yest.连板数))
+          : 0
+      boards = yestBoards > 0 ? yestBoards + 1 : 1
+    }
+
+    const list = byBoard.get(boards) ?? []
+    list.push({
+      code: shortCode(code),
+      name: displayStockName(s.stock_name, code),
+      price: s.close ?? 0,
+      sector: conceptOf(code, snapshot.rank) || s.industry || '—',
+      amount: amountYi(s.amount),
+      strength: 0,
+      limitTime: formatLimitTime(s.lu_time),
+      zhaban: liveStockIsZhaban(s),
+    })
+    byBoard.set(boards, list)
+  }
+
+  return ladderRowsFromGroups(byBoard)
+}
+
+export type AdaptLadderOpts = {
+  /** 盘中实时快照；当日 history 为空时用 limit_up_list 拼天梯 */
+  snapshot?: RankSnapshot | null
+  /** 上一交易日涨停历史（用于连板天数 +1） */
+  prevHistory?: LimitHistoryItem[]
+}
+
+/**
+ * 连板天梯：
+ * - 复盘 / 盘后：用当日涨停历史（含 U/Z 与连板数）
+ * - 盘中：当日 history 通常为空，改用 live limit_up_list + 昨日 U 历史推算连板
+ */
+export function adaptLadder(
+  history: LimitHistoryItem[],
+  opts?: AdaptLadderOpts,
+): LadderRow[] {
+  if (history.length) {
+    const byBoard = new Map<number, LadderRow['stocks']>()
+    for (const h of history) {
+      const boards = Math.max(1, Math.round(h.连板数 ?? 1))
+      const list = byBoard.get(boards) ?? []
+      list.push({
         code: shortCode(h.股票代码),
         name: displayStockName(h.股票名称, h.股票代码),
         price: h.收盘价 ?? 0,
@@ -355,8 +524,17 @@ export function adaptLadder(history: LimitHistoryItem[]): LadderRow[] {
         limitTime: formatLimitTime(h.首次涨停时间),
         // 打开次数>0 且最终仍涨停 ≠ 炸板；仅明确开板/Z 才标「炸」
         zhaban: historyIsZhaban(h),
-      })),
-    }))
+      })
+      byBoard.set(boards, list)
+    }
+    return ladderRowsFromGroups(byBoard)
+  }
+
+  const snapshot = opts?.snapshot
+  if (snapshot?.limit_up_list?.length) {
+    return adaptLiveLadder(snapshot, opts?.prevHistory ?? [])
+  }
+  return []
 }
 
 export function adaptStrong(snapshot: RankSnapshot | null): StrongStock[] {
@@ -392,6 +570,31 @@ export function adaptStrong(snapshot: RankSnapshot | null): StrongStock[] {
     }
   }
   return out.sort((a, b) => b.pct - a.pct)
+}
+
+/** 「个股」Tab：全市场涨幅>7%，展示全部概念 */
+export function adaptMovers(snapshot: RankSnapshot | null): MoverStock[] {
+  const list = snapshot?.movers_gt7
+  if (!list?.length) return []
+  return list.map((s) => {
+    const concepts = (s.concepts ?? [])
+      .map((c) => (c.concept_name || '').trim())
+      .filter(Boolean)
+    return {
+      code: shortCode(s.stock_code),
+      tsCode: s.stock_code,
+      name: displayStockName(s.stock_name, s.stock_code),
+      price: s.close ?? 0,
+      pct: s.pct_chg ?? 0,
+      amount: amountYi(s.amount),
+      mktCap: circMvYi(s.circ_mv),
+      industry: s.industry ?? '',
+      board: s.board_label || s.board || '',
+      isLimitUp: s.is_limit_up === true,
+      concepts,
+      riseSpeed: s.rise_speed ?? null,
+    }
+  })
 }
 
 export function adaptSentiment(snapshot: RankSnapshot | null): { label: string; val: number; color: string }[] {

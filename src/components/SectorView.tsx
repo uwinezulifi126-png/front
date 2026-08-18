@@ -1,6 +1,7 @@
 import { Fragment, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import type { WatchInput } from '../hooks/useWatchlist'
 import type { SectorDetail, Stock } from '../types'
+import { stocksForSectorCodes } from '../utils/boardFilter'
 import { guessTsCode } from '../utils/watchlist'
 import { OpensBadge, RiseSpeedCell, StatusBadge } from './Badges'
 import { IconPlaceholder } from './IconPlaceholder'
@@ -181,8 +182,12 @@ export function SectorView({
   const COL_DEFS = buildColDefs(isWatched, onToggleWatch)
   const colCount = columnOrder.length
 
-  // 与 SectorPanel / adaptSectorHeat 一致：仅展示涨停前十
-  const ranked = details.slice(0, 10)
+  // 与 SectorPanel / adaptSectorHeat 一致：仅展示涨停前十。
+  // 家数按 stock_codes ∩ 可见涨停池重算（一股可属多概念；勿用 Stock.sector 主键）。
+  const ranked = details.slice(0, 10).map((d) => {
+    const matched = stocksForSectorCodes(stocks, d.stockCodes, d.name)
+    return { ...d, count: matched.length, _matched: matched }
+  })
   const activeName =
     selected && ranked.some((s) => s.name === selected) ? selected : null
 
@@ -196,7 +201,7 @@ export function SectorView({
 
   const maxCount = Math.max(...ranked.map((s) => s.count), 1)
   const detail = activeName ? ranked.find((s) => s.name === activeName) : undefined
-  const sectorStocks = activeName ? stocks.filter((s) => s.sector === activeName) : []
+  const sectorStocks = detail?._matched ?? []
 
   const reorderColumns = (fromId: ColId, toId: ColId) => {
     if (fromId === toId || fromId === 'code' || toId === 'code') return

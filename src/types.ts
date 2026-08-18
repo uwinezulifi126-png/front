@@ -19,6 +19,10 @@ export interface Stock {
   bidAmount: number | null
   /** 近 1 分钟涨跌幅%；null = 无分钟缓冲（复盘/冷启动），勿编造 */
   riseSpeed: number | null
+  /** 流通市值（亿元）；null = 无 daily_basic.circ_mv */
+  mktCap?: number | null
+  /** 所属全部概念名（噪声板块已过滤） */
+  concepts?: string[]
 }
 
 export interface KlineBar {
@@ -55,6 +59,7 @@ export type ActiveTab =
   | 'locked'
   | 'open'
   | 'watchlist'
+  | 'movers'
   | 'sector'
   | 'concepts'
   | 'news'
@@ -77,6 +82,8 @@ export interface SectorHeatItem {
   name: string
   count: number
   pct: number
+  /** 概念成分涨停代码（与后端 stock_codes 一致）；用于与表格/板过滤对齐 */
+  stockCodes: string[]
 }
 
 export interface SectorDetail {
@@ -89,6 +96,8 @@ export interface SectorDetail {
   topPct: number
   amount: number
   leadingStocks: string[]
+  /** 概念成分涨停代码（与后端 stock_codes 一致）；表格按此集合解析，而非 Stock.sector */
+  stockCodes: string[]
 }
 
 export interface AlertItem {
@@ -146,4 +155,20 @@ export interface StrongStock {
   mktCap: number
   industry: string
   riseSpeed: number
+}
+
+/** 「个股」Tab：涨幅>7% 全市场，含全部概念标签 */
+export interface MoverStock {
+  code: string
+  tsCode: string
+  name: string
+  price: number
+  pct: number
+  amount: number
+  mktCap: number
+  industry: string
+  board: string
+  isLimitUp: boolean
+  concepts: string[]
+  riseSpeed: number | null
 }

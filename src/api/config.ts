@@ -35,6 +35,8 @@ export const endpoints = {
   /** 连板晋级率（涨停历史聚合） */
   promotionRate: `${API_BASE_URL}/api/promotion-rate`,
   kline: (tsCode: string) => `${API_BASE_URL}/api/kline/${encodeURIComponent(tsCode)}`,
+  /** Batch today's close/pct for arbitrary ts_codes (watchlist) */
+  quotes: `${API_BASE_URL}/api/quotes`,
   /** 单票单日 1 分钟分时（悬停日 K） */
   intraday: (tsCode: string) =>
     `${API_BASE_URL}/api/intraday/${encodeURIComponent(tsCode)}`,
@@ -53,6 +55,8 @@ export const endpoints = {
   conceptsBlocked: `${API_BASE_URL}/api/concepts/blocked`,
   /** 用户自建「自选概念」及成分股（服务端持久化，全端共享） */
   conceptsCustom: `${API_BASE_URL}/api/concepts/custom`,
+  /** 官方概念成分用户覆盖（block/extra，按 concept_code） */
+  conceptsMemberOverrides: `${API_BASE_URL}/api/concepts/member-overrides`,
   /** 股票字典搜索（自选概念加成分） */
   stocksSearch: `${API_BASE_URL}/api/stocks/search`,
 } as const

@@ -7,13 +7,26 @@ import {
   type StockSearchItem,
 } from '../api/client'
 import type { ConceptCatalogItem } from '../types'
-import type { CustomConcept, CustomConceptMember } from '../utils/conceptBlocklist'
+import {
+  applyMemberOverrides,
+  overrideKey,
+  type ConceptMemberOverride,
+  type CustomConcept,
+  type CustomConceptMember,
+  type OverlayMember,
+} from '../utils/conceptBlocklist'
 type FilterMode = 'all' | 'ranked' | 'excluded' | 'custom'
+type EditingTarget = {
+  kind: 'custom' | 'official'
+  name: string
+  code: string
+}
 type ConceptListViewProps = {
   /** 当日/复盘 feed 概念（按名称叠加涨幅/涨停） */
   feedCatalog: ConceptCatalogItem[]
   custom: CustomConcept[]
   blockedSet: ReadonlySet<string>
+  memberOverrides: ConceptMemberOverride[]
   syncError?: string | null
   onToggle: (name: string) => void
   onAddCustom: (name: string, note?: string) => boolean
@@ -28,6 +41,11 @@ type ConceptListViewProps = {
     members: { tsCode?: string; code?: string; name?: string }[],
   ) => number
   onRemoveCustomMember: (name: string, tsCodeOrCode: string) => void
+  onAddOfficialMember: (
+    conceptCode: string,
+    member: { tsCode?: string; code?: string; name?: string },
+  ) => boolean
+  onRemoveOfficialMember: (conceptCode: string, tsCodeOrCode: string) => void
 }
 type Row = ConceptCatalogItem & {
   blocked: boolean
@@ -47,10 +65,19 @@ type ImportPreview = {
   newCount: number
   items: ConceptMemberItem[]
 }
+function isEditingRow(editing: EditingTarget | null, r: Row): boolean {
+  if (!editing) return false
+  if (r.custom) return editing.kind === 'custom' && editing.name === r.name
+  return (
+    editing.kind === 'official' &&
+    ((editing.code && r.code && editing.code === r.code) || editing.name === r.name)
+  )
+}
 export function ConceptListView({
   feedCatalog,
   custom,
   blockedSet,
+  memberOverrides,
   syncError,
   onToggle,
   onAddCustom,
@@ -59,6 +86,8 @@ export function ConceptListView({
   onAddCustomMember,
   onAddCustomMembers,
   onRemoveCustomMember,
+  onAddOfficialMember,
+  onRemoveOfficialMember,
 }: ConceptListViewProps) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<FilterMode>('all')
@@ -68,12 +97,16 @@ export function ConceptListView({
   const [thsItems, setThsItems] = useState<{ code: string; name: string }[]>([])
   const [thsLoading, setThsLoading] = useState(true)
   const [thsError, setThsError] = useState<string | null>(null)
-  const [editingName, setEditingName] = useState<string | null>(null)
+  const [editing, setEditing] = useState<EditingTarget | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const [memberQuery, setMemberQuery] = useState('')
   const [memberHits, setMemberHits] = useState<StockSearchItem[]>([])
   const [memberSearching, setMemberSearching] = useState(false)
   const [memberError, setMemberError] = useState<string | null>(null)
+  const [memberFilter, setMemberFilter] = useState('')
+  const [officialMembers, setOfficialMembers] = useState<ConceptMemberItem[]>([])
+  const [officialLoading, setOfficialLoading] = useState(false)
+  const [officialError, setOfficialError] = useState<string | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [importQuery, setImportQuery] = useState('')
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
@@ -99,7 +132,7 @@ export function ConceptListView({
     return () => ac.abort()
   }, [])
   useEffect(() => {
-    if (!editingName) {
+    if (!editing) {
       setMemberQuery('')
       setMemberHits([])
       setMemberError(null)
@@ -133,7 +166,37 @@ export function ConceptListView({
       ac.abort()
       window.clearTimeout(timer)
     }
-  }, [editingName, memberQuery])
+  }, [editing, memberQuery])
+  useEffect(() => {
+    if (!editing || editing.kind !== 'official') {
+      setOfficialMembers([])
+      setOfficialLoading(false)
+      setOfficialError(null)
+      return
+    }
+    const ac = new AbortController()
+    setOfficialLoading(true)
+    setOfficialError(null)
+    void fetchConceptMembers({
+      code: editing.code || undefined,
+      name: editing.name,
+      limit: 10000,
+      signal: ac.signal,
+    })
+      .then((res) => {
+        if (ac.signal.aborted) return
+        setOfficialMembers(res.items)
+      })
+      .catch((e: unknown) => {
+        if (ac.signal.aborted) return
+        setOfficialMembers([])
+        setOfficialError((e as Error).message || '成分加载失败')
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setOfficialLoading(false)
+      })
+    return () => ac.abort()
+  }, [editing])
   const feedByName = useMemo(() => {
     const map = new Map<string, ConceptCatalogItem>()
     for (const c of feedCatalog) {
@@ -147,6 +210,11 @@ export function ConceptListView({
     for (const c of custom) map.set(c.name, c)
     return map
   }, [custom])
+  const overrideByCode = useMemo(() => {
+    const map = new Map<string, ConceptMemberOverride>()
+    for (const o of memberOverrides) map.set(o.conceptCode, o)
+    return map
+  }, [memberOverrides])
   const catalog = useMemo((): ConceptCatalogItem[] => {
     return thsItems.map((c) => {
       const feed = feedByName.get(c.name)
@@ -209,9 +277,27 @@ export function ConceptListView({
       custom: customCount,
     }
   }, [rows])
-  const editingConcept = editingName ? customByName.get(editingName) : undefined
+  const editingConcept = editing?.kind === 'custom' ? customByName.get(editing.name) : undefined
+  const editingOverride = useMemo(() => {
+    if (!editing || editing.kind !== 'official') return undefined
+    return overrideByCode.get(overrideKey(editing.code, editing.name))
+  }, [editing, overrideByCode])
+  const displayedMembers: OverlayMember[] = useMemo(() => {
+    if (!editing) return []
+    if (editing.kind === 'custom') {
+      return (editingConcept?.members ?? []).map((m) => ({ ...m, source: 'extra' as const }))
+    }
+    return applyMemberOverrides(officialMembers, editingOverride)
+  }, [editing, editingConcept, editingOverride, officialMembers])
+  const visibleMembers = useMemo(() => {
+    const q = memberFilter.trim().toLowerCase()
+    if (!q) return displayedMembers
+    return displayedMembers.filter(
+      (m) => m.code.toLowerCase().includes(q) || m.name.toLowerCase().includes(q) || m.tsCode.toLowerCase().includes(q),
+    )
+  }, [displayedMembers, memberFilter])
   const importCandidates = useMemo((): ImportCandidate[] => {
-    if (!editingName) return []
+    if (!editing || editing.kind !== 'custom') return []
     const q = importQuery.trim().toLowerCase()
     const out: ImportCandidate[] = []
     for (const c of thsItems) {
@@ -225,7 +311,7 @@ export function ConceptListView({
       })
     }
     for (const c of custom) {
-      if (c.name === editingName) continue
+      if (c.name === editing.name) continue
       if (q && !c.name.toLowerCase().includes(q)) continue
       out.push({
         key: `custom:${c.name}`,
@@ -236,7 +322,7 @@ export function ConceptListView({
       })
     }
     return out.slice(0, 40)
-  }, [custom, editingName, importQuery, thsItems])
+  }, [custom, editing, importQuery, thsItems])
   const handleAdd = () => {
     const name = newName.trim()
     if (!name) {
@@ -256,65 +342,78 @@ export function ConceptListView({
     setNewNote('')
     setFormError(null)
     setFilter('custom')
-    setEditingName(name)
+    setEditing({ kind: 'custom', name, code: '' })
     setRenameDraft(name)
   }
-  const openEditor = (name: string) => {
-    setEditingName(name)
-    setRenameDraft(name)
+  const resetEditorFields = () => {
     setMemberQuery('')
     setMemberHits([])
     setMemberError(null)
+    setMemberFilter('')
     setImportOpen(false)
     setImportQuery('')
     setImportPreview(null)
     setImportError(null)
     setImportMessage(null)
+    setOfficialError(null)
+  }
+  const openEditor = (r: Row) => {
+    setEditing(
+      r.custom
+        ? { kind: 'custom', name: r.name, code: '' }
+        : { kind: 'official', name: r.name, code: overrideKey(r.code, r.name) },
+    )
+    setRenameDraft(r.name)
+    resetEditorFields()
   }
   const closeEditor = () => {
-    setEditingName(null)
+    setEditing(null)
     setRenameDraft('')
-    setMemberQuery('')
-    setMemberHits([])
-    setMemberError(null)
-    setImportOpen(false)
-    setImportQuery('')
-    setImportPreview(null)
-    setImportError(null)
-    setImportMessage(null)
+    resetEditorFields()
+    setOfficialMembers([])
+  }
+  const toggleEditor = (r: Row) => {
+    if (isEditingRow(editing, r)) closeEditor()
+    else openEditor(r)
   }
   const handleRename = () => {
-    if (!editingName) return
+    if (!editing || editing.kind !== 'custom') return
     const next = renameDraft.trim()
     if (!next) {
       setFormError('名称不能为空')
       return
     }
-    if (next !== editingName && (officialNames.has(next) || custom.some((c) => c.name === next))) {
+    if (next !== editing.name && (officialNames.has(next) || custom.some((c) => c.name === next))) {
       setFormError('该概念已存在')
       return
     }
-    const ok = onRenameCustom(editingName, next)
+    const ok = onRenameCustom(editing.name, next)
     if (!ok) {
       setFormError('重命名失败')
       return
     }
-    setEditingName(next)
+    setEditing({ kind: 'custom', name: next, code: '' })
     setRenameDraft(next)
     setFormError(null)
   }
   const handleAddMember = (hit: StockSearchItem) => {
-    if (!editingName) return
-    onAddCustomMember(editingName, hit)
+    if (!editing) return
+    if (editing.kind === 'custom') onAddCustomMember(editing.name, hit)
+    else onAddOfficialMember(editing.code, hit)
     setMemberQuery('')
     setMemberHits([])
+  }
+  const handleRemoveMember = (m: OverlayMember) => {
+    if (!editing) return
+    if (editing.kind === 'custom') onRemoveCustomMember(editing.name, m.tsCode)
+    else onRemoveOfficialMember(editing.code, m.tsCode)
   }
   const countNewMembers = (
     existing: CustomConceptMember[],
     incoming: ConceptMemberItem[],
   ) => {
-    const seen = new Set(existing.map((m) => m.tsCode))
-    const seenCode = new Set(existing.map((m) => m.code))
+    const seen = new Set(existing.map((x) => x.tsCode))
+    const seenCode = new Set(existing.map((x) => x.code))
     let n = 0
     for (const m of incoming) {
       if (seen.has(m.tsCode) || seenCode.has(m.code)) continue
@@ -366,8 +465,8 @@ export function ConceptListView({
     }
   }
   const confirmImport = () => {
-    if (!editingName || !importPreview) return
-    const added = onAddCustomMembers(editingName, importPreview.items)
+    if (!editing || editing.kind !== 'custom' || !importPreview) return
+    const added = onAddCustomMembers(editing.name, importPreview.items)
     setImportMessage(
       added > 0
         ? `已从「${importPreview.candidate.name}」合并导入 ${added} 只`
@@ -377,6 +476,9 @@ export function ConceptListView({
   }
   const showOfficialLoading = filter !== 'custom' && thsLoading
   const emptyOfficialOnly = filter !== 'custom' && thsError && rows.filter((r) => !r.custom).length === 0
+  const editorOpen = editing != null && (editing.kind === 'official' || editingConcept != null)
+  const extraCount = editingOverride?.extra.length ?? 0
+  const blockedCount = editingOverride?.blocked.length ?? 0
   return (
     <div className="concept-view">
       <div className="concept-toolbar">
@@ -409,7 +511,7 @@ export function ConceptListView({
           </div>
         </div>
         <div className="concept-hint mono muted">
-          同花顺全量 · 官方可开关计入排行 · 关闭写入服务端屏蔽 · 自建强制不进榜
+          点击概念名查看全量成分 · 官方增删写入覆盖层（维度同步不覆盖） · 关闭计入排行仍写屏蔽
         </div>
       </div>
       {syncError ? <div className="concept-banner mono concept-form-error">{syncError}</div> : null}
@@ -442,29 +544,45 @@ export function ConceptListView({
         </button>
         {formError && <span className="concept-form-error mono">{formError}</span>}
       </div>
-      {editingConcept ? (
+      {editorOpen ? (
         <div className="concept-member-editor">
           <div className="concept-member-editor-head">
             <div className="concept-member-editor-title">
-              <span className="mono">编辑成分 ·</span>
-              <input
-                className="concept-search mono concept-rename-input"
-                type="text"
-                value={renameDraft}
-                onChange={(e) => {
-                  setRenameDraft(e.target.value)
-                  setFormError(null)
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleRename()
-                }}
-              />
-              <button type="button" className="concept-add-btn" onClick={handleRename}>
-                重命名
-              </button>
-              <span className="mono muted">
-                {editingConcept.members.length} 只 · 自建强制不进榜 · 服务端同步
-              </span>
+              <span className="mono">成分 ·</span>
+              {editing?.kind === 'custom' ? (
+                <>
+                  <input
+                    className="concept-search mono concept-rename-input"
+                    type="text"
+                    value={renameDraft}
+                    onChange={(e) => {
+                      setRenameDraft(e.target.value)
+                      setFormError(null)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleRename()
+                    }}
+                  />
+                  <button type="button" className="concept-add-btn" onClick={handleRename}>
+                    重命名
+                  </button>
+                  <span className="mono muted">
+                    {displayedMembers.length} 只 · 自建强制不进榜 · 服务端同步
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="accent">{editing?.name}</span>
+                  {editing?.code ? <span className="mono muted">{editing.code}</span> : null}
+                  <span className="mono muted">
+                    {officialLoading
+                      ? '加载全量成分…'
+                      : `${displayedMembers.length} 只（官方 ${officialMembers.length}${
+                          blockedCount ? ` · 已移除 ${blockedCount}` : ''
+                        }${extraCount ? ` · 自加 ${extraCount}` : ''}）`}
+                  </span>
+                </>
+              )}
             </div>
             <button type="button" className="concept-remove-btn mono" onClick={closeEditor}>
               收起
@@ -478,22 +596,32 @@ export function ConceptListView({
               value={memberQuery}
               onChange={(e) => setMemberQuery(e.target.value)}
             />
-            <button
-              type="button"
-              className={`concept-add-btn mono${importOpen ? ' active' : ''}`}
-              onClick={() => {
-                setImportOpen((v) => !v)
-                setImportPreview(null)
-                setImportError(null)
-                setImportMessage(null)
-              }}
-            >
-              从板块导入
-            </button>
+            {editing?.kind === 'custom' ? (
+              <button
+                type="button"
+                className={`concept-add-btn mono${importOpen ? ' active' : ''}`}
+                onClick={() => {
+                  setImportOpen((v) => !v)
+                  setImportPreview(null)
+                  setImportError(null)
+                  setImportMessage(null)
+                }}
+              >
+                从板块导入
+              </button>
+            ) : null}
+            <input
+              className="concept-search mono concept-member-filter"
+              type="search"
+              placeholder="筛选已有成分…"
+              value={memberFilter}
+              onChange={(e) => setMemberFilter(e.target.value)}
+            />
             {memberSearching ? <span className="mono muted">搜索中…</span> : null}
             {memberError ? <span className="concept-form-error mono">{memberError}</span> : null}
+            {officialError ? <span className="concept-form-error mono">{officialError}</span> : null}
           </div>
-          {importOpen ? (
+          {editing?.kind === 'custom' && importOpen ? (
             <div className="concept-import-panel">
               <div className="concept-member-search-row">
                 <input
@@ -562,7 +690,7 @@ export function ConceptListView({
           {memberHits.length > 0 ? (
             <div className="concept-member-hits">
               {memberHits.map((hit) => {
-                const exists = editingConcept.members.some(
+                const exists = displayedMembers.some(
                   (m) => m.tsCode === hit.tsCode || m.code === hit.code,
                 )
                 return (
@@ -581,26 +709,59 @@ export function ConceptListView({
               })}
             </div>
           ) : null}
-          {editingConcept.members.length === 0 ? (
+          {officialLoading && editing?.kind === 'official' ? (
+            <div className="concept-member-empty mono muted">正在加载官方全量成分…</div>
+          ) : displayedMembers.length === 0 ? (
             <div className="concept-member-empty mono muted">
-              暂无成分股，可搜索添加或从板块导入
+              暂无成分股，可搜索添加{editing?.kind === 'custom' ? '或从板块导入' : ''}
             </div>
           ) : (
-            <ul className="concept-member-list">
-              {editingConcept.members.map((m) => (
-                <li key={m.tsCode} className="concept-member-item">
-                  <span className="mono">{m.code}</span>
-                  <span>{m.name}</span>
-                  <button
-                    type="button"
-                    className="concept-remove-btn mono"
-                    onClick={() => onRemoveCustomMember(editingName!, m.tsCode)}
-                  >
-                    移除
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <div className="concept-member-table-wrap">
+              <table className="data-table compact concept-member-table">
+                <thead>
+                  <tr>
+                    <th className="text-left">代码</th>
+                    <th className="text-left">名称</th>
+                    <th className="text-center">来源</th>
+                    <th className="text-center">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleMembers.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="mono muted">
+                        无匹配成分
+                      </td>
+                    </tr>
+                  ) : (
+                    visibleMembers.map((m) => (
+                      <tr key={m.tsCode}>
+                        <td className="mono">{m.code}</td>
+                        <td>{m.name}</td>
+                        <td className="text-center">
+                          <span className={`concept-source${m.source === 'extra' ? ' custom' : ''}`}>
+                            {editing?.kind === 'custom'
+                              ? '自建'
+                              : m.source === 'extra'
+                                ? '自加'
+                                : '官方'}
+                          </span>
+                        </td>
+                        <td className="text-center">
+                          <button
+                            type="button"
+                            className="concept-remove-btn mono"
+                            onClick={() => handleRemoveMember(m)}
+                          >
+                            移除
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       ) : null}
@@ -646,11 +807,18 @@ export function ConceptListView({
               {filtered.map((r) => (
                 <tr
                   key={`${r.custom ? 'c' : 'o'}:${r.code || r.name}`}
-                  className={`${r.blocked ? 'blocked' : ''}${editingName === r.name ? ' editing' : ''}`}
+                  className={`${r.blocked ? 'blocked' : ''}${isEditingRow(editing, r) ? ' editing' : ''}`}
                 >
                   <td className="text-left">
                     <div className="concept-name-cell">
-                      <span className={r.blocked ? 'muted' : ''}>{r.name}</span>
+                      <button
+                        type="button"
+                        className={`concept-name-btn${isEditingRow(editing, r) ? ' active' : ''}${r.blocked ? ' muted' : ''}`}
+                        onClick={() => toggleEditor(r)}
+                        title="查看 / 编辑成分股"
+                      >
+                        {r.name}
+                      </button>
                       {r.code ? (
                         <span className="mono muted concept-note">{r.code}</span>
                       ) : null}
@@ -712,31 +880,27 @@ export function ConceptListView({
                     )}
                   </td>
                   <td className="text-center">
-                    {r.custom ? (
-                      <div className="concept-row-actions">
-                        <button
-                          type="button"
-                          className="concept-add-btn mono"
-                          onClick={() =>
-                            editingName === r.name ? closeEditor() : openEditor(r.name)
-                          }
-                        >
-                          {editingName === r.name ? '收起' : '编辑成分'}
-                        </button>
+                    <div className="concept-row-actions">
+                      <button
+                        type="button"
+                        className="concept-add-btn mono"
+                        onClick={() => toggleEditor(r)}
+                      >
+                        {isEditingRow(editing, r) ? '收起' : '成分'}
+                      </button>
+                      {r.custom ? (
                         <button
                           type="button"
                           className="concept-remove-btn mono"
                           onClick={() => {
-                            if (editingName === r.name) closeEditor()
+                            if (isEditingRow(editing, r)) closeEditor()
                             onRemoveCustom(r.name)
                           }}
                         >
                           删除
                         </button>
-                      </div>
-                    ) : (
-                      <span className="muted mono">—</span>
-                    )}
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}

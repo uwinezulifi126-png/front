@@ -82,6 +82,10 @@ export async function fetchCalendar(
     lunch_break: Boolean(statusRaw.lunch_break),
     prev_trade_date:
       typeof statusRaw.prev_trade_date === 'string' ? statusRaw.prev_trade_date : null,
+    yest_limit_trade_date:
+      typeof statusRaw.yest_limit_trade_date === 'string'
+        ? statusRaw.yest_limit_trade_date
+        : null,
     default_replay_date:
       typeof statusRaw.default_replay_date === 'string' ? statusRaw.default_replay_date : null,
     message: typeof statusRaw.message === 'string' ? statusRaw.message : null,
@@ -304,7 +308,7 @@ export async function fetchPromotionRate(
 export async function fetchKline(
   tsCode: string,
   opts?: { limit?: number; start?: string; end?: string; signal?: AbortSignal },
-): Promise<{ tsCode: string; items: KlineBar[] }> {
+): Promise<{ tsCode: string; items: KlineBar[]; liveToday: boolean }> {
   const url = toApiUrl(endpoints.kline(tsCode))
   if (opts?.limit != null) url.searchParams.set('limit', String(opts.limit))
   if (opts?.start) url.searchParams.set('start', opts.start.replace(/-/g, ''))
@@ -354,10 +358,99 @@ export async function fetchKline(
         })
         .filter((x): x is KlineBar => x != null)
     : []
+  const lastRaw =
+    Array.isArray(itemsRaw) && itemsRaw.length > 0
+      ? asRecord(itemsRaw[itemsRaw.length - 1])
+      : null
+  const liveToday = root.live_today === true || lastRaw?.source === 'rt_k'
   return {
     tsCode: String(root.ts_code ?? tsCode).toUpperCase(),
     items,
+    liveToday,
   }
+}
+
+export type QuoteItem = {
+  tsCode: string
+  code: string
+  name: string | null
+  close: number | null
+  pctChg: number | null
+  source: string | null
+  /** 成交额：rt_k 为元，日线为千元；前端 amountYi → 亿元 */
+  amount: number | null
+  /** 流通股本（万股，Tushare daily_basic.float_share） */
+  floatShare: number | null
+  /** 流通市值（万元，Tushare daily_basic.circ_mv）；展示时 /1e4 → 亿元 */
+  circMv: number | null
+  concepts: string[]
+}
+
+/** Batch today's session quotes for watchlist ts_codes. */
+export async function fetchQuotes(
+  tsCodes: string[],
+  opts?: { signal?: AbortSignal },
+): Promise<QuoteItem[]> {
+  const codes = [...new Set(tsCodes.map((c) => c.trim().toUpperCase()).filter(Boolean))]
+  if (!codes.length) return []
+  const url = toApiUrl(endpoints.quotes)
+  url.searchParams.set('ts_codes', codes.join(','))
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`行情请求失败 (${res.status})`)
+  const json: unknown = await res.json()
+  const root = asRecord(json) ?? {}
+  const itemsRaw = root.items
+  if (!Array.isArray(itemsRaw)) return []
+  const pickNum = (r: Record<string, unknown>, keys: string[]): number | null => {
+    for (const k of keys) {
+      const v = r[k]
+      if (typeof v === 'number' && Number.isFinite(v)) return v
+      if (typeof v === 'string' && v.trim() !== '') {
+        const n = Number(v)
+        if (Number.isFinite(n)) return n
+      }
+    }
+    return null
+  }
+  const out: QuoteItem[] = []
+  for (const row of itemsRaw) {
+    const r = asRecord(row)
+    if (!r) continue
+    const tsCode = String(r.ts_code ?? r.tsCode ?? '').trim().toUpperCase()
+    const code = String(r.code ?? r.symbol ?? '').trim().toUpperCase()
+    if (!tsCode && !code) continue
+    const conceptsRaw = r.concepts
+    const concepts: string[] = []
+    if (Array.isArray(conceptsRaw)) {
+      for (const c of conceptsRaw) {
+        if (typeof c === 'string' && c.trim()) {
+          concepts.push(c.trim())
+          continue
+        }
+        const rec = asRecord(c)
+        if (!rec) continue
+        const name = String(rec.concept_name ?? rec.conceptName ?? rec.name ?? '').trim()
+        if (name) concepts.push(name)
+      }
+    }
+    out.push({
+      tsCode: tsCode || code,
+      code: code || tsCode.split('.')[0] || '',
+      name: typeof r.name === 'string' && r.name.trim() ? r.name.trim() : null,
+      close: pickNum(r, ['close', '收盘价']),
+      pctChg: pickNum(r, ['pct_chg', 'pctChg', '涨跌幅']),
+      source: typeof r.source === 'string' ? r.source : null,
+      amount: pickNum(r, ['amount', '成交额', '成交金额']),
+      floatShare: pickNum(r, ['float_share', 'floatShare', '流通股本']),
+      circMv: pickNum(r, ['circ_mv', 'circMv', '流通市值']),
+      concepts,
+    })
+  }
+  return out
 }
 
 export async function fetchIntraday(
@@ -883,6 +976,104 @@ export async function putCustomConcepts(
   })
   if (!res.ok) throw new Error(`自选概念保存失败 (${res.status})`)
   const saved = parseCustomConcepts(await res.json())
+  return { items: saved, count: saved.length }
+}
+
+export type MemberOverrideDto = {
+  conceptCode: string
+  blocked: CustomConceptMemberDto[]
+  extra: CustomConceptMemberDto[]
+}
+
+export type MemberOverridesResponse = {
+  items: MemberOverrideDto[]
+  count: number
+}
+
+function parseOverrideMembers(raw: unknown): CustomConceptMemberDto[] {
+  if (!Array.isArray(raw)) return []
+  const out: CustomConceptMemberDto[] = []
+  const seen = new Set<string>()
+  for (const m of raw) {
+    const mr = asRecord(m)
+    if (!mr) continue
+    const tsCode = String(mr.ts_code ?? mr.tsCode ?? mr.code ?? '')
+      .trim()
+      .toUpperCase()
+    if (!tsCode || seen.has(tsCode)) continue
+    seen.add(tsCode)
+    const code = String(mr.code ?? mr.symbol ?? tsCode.split('.')[0] ?? '')
+      .trim()
+      .toUpperCase()
+    const mname = String(mr.name ?? '').trim() || code
+    out.push({ tsCode, code, name: mname })
+  }
+  return out
+}
+
+function parseMemberOverrides(json: unknown): MemberOverrideDto[] {
+  const root = asRecord(json) ?? {}
+  const itemsRaw = root.items
+  if (!Array.isArray(itemsRaw)) return []
+  const out: MemberOverrideDto[] = []
+  const seen = new Set<string>()
+  for (const item of itemsRaw) {
+    const rec = asRecord(item)
+    if (!rec) continue
+    const conceptCode = String(rec.concept_code ?? rec.conceptCode ?? '')
+      .trim()
+      .toUpperCase()
+    if (!conceptCode || seen.has(conceptCode)) continue
+    seen.add(conceptCode)
+    const extra = parseOverrideMembers(rec.extra)
+    const extraTs = new Set(extra.map((m) => m.tsCode))
+    const blocked = parseOverrideMembers(rec.blocked).filter((m) => !extraTs.has(m.tsCode))
+    if (extra.length === 0 && blocked.length === 0) continue
+    out.push({ conceptCode, blocked, extra })
+  }
+  return out
+}
+
+function toOverrideApiPayload(items: MemberOverrideDto[]) {
+  return items.map((o) => ({
+    concept_code: o.conceptCode,
+    blocked: o.blocked.map((m) => ({ ts_code: m.tsCode, code: m.code, name: m.name })),
+    extra: o.extra.map((m) => ({ ts_code: m.tsCode, code: m.code, name: m.name })),
+  }))
+}
+
+/** 官方概念成分覆盖层（全端共享）。 */
+export async function fetchMemberOverrides(opts?: {
+  signal?: AbortSignal
+}): Promise<MemberOverridesResponse> {
+  const url = toApiUrl(endpoints.conceptsMemberOverrides)
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`概念成分覆盖加载失败 (${res.status})`)
+  const items = parseMemberOverrides(await res.json())
+  return { items, count: items.length }
+}
+
+/** 全量替换官方概念成分覆盖层。 */
+export async function putMemberOverrides(
+  items: MemberOverrideDto[],
+  opts?: { signal?: AbortSignal },
+): Promise<MemberOverridesResponse> {
+  const url = toApiUrl(endpoints.conceptsMemberOverrides)
+  const res = await fetch(url.toString(), {
+    method: 'PUT',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ items: toOverrideApiPayload(items) }),
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`概念成分覆盖保存失败 (${res.status})`)
+  const saved = parseMemberOverrides(await res.json())
   return { items: saved, count: saved.length }
 }
 

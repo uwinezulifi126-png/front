@@ -72,6 +72,22 @@ function normalizeStock(raw: unknown): RankStock | null {
     ]) ?? null
   const rawName =
     pickString(obj, ['stock_name', 'name', 'ts_name', '股票名称']) ?? null
+  const conceptsRaw = obj.concepts
+  const concepts = Array.isArray(conceptsRaw)
+    ? conceptsRaw
+        .map((c) => {
+          const rec = asRecord(c)
+          if (!rec) return null
+          const concept_name =
+            pickString(rec, ['concept_name', 'name', 'ths_name']) ?? null
+          if (!concept_name) return null
+          return {
+            concept_code: pickString(rec, ['concept_code', 'code', 'ths_code']) ?? undefined,
+            concept_name,
+          }
+        })
+        .filter((c): c is { concept_code?: string; concept_name: string } => c != null)
+    : null
   return {
     stock_code,
     // Drop ts_code-as-name so later enrichment can fill a real Chinese name
@@ -94,6 +110,7 @@ function normalizeStock(raw: unknown): RankStock | null {
     limit_type: pickString(obj, ['limit_type', 'limit', '涨停类型']) ?? null,
     rise_speed:
       pickNumber(obj, ['rise_speed', 'pct_1m', 'riseSpeed', '一分钟涨速']) ?? null,
+    concepts: concepts && concepts.length > 0 ? concepts : null,
   }
 }
 
@@ -269,6 +286,8 @@ function normalizeMeta(raw: unknown): RankMeta {
     mode: pickString(obj, ['mode', 'feed_mode']) ?? null,
     prev_trade_date:
       pickString(obj, ['prev_trade_date', 'prevTradeDate', 'previous_trade_date']) ?? null,
+    yest_limit_trade_date:
+      pickString(obj, ['yest_limit_trade_date', 'yestLimitTradeDate']) ?? null,
     default_replay_date:
       pickString(obj, ['default_replay_date', 'defaultReplayDate']) ?? null,
     strong_source: pickString(obj, ['strong_source', 'strongSource']) ?? null,
@@ -347,7 +366,7 @@ function fillMissingStockNames(
 export function normalizeSnapshot(payload: unknown): RankSnapshot {
   const root = asRecord(payload)
   if (!root) {
-    return { meta: {}, rank: [], limit_up_list: [] }
+    return { meta: {}, rank: [], limit_up_list: [], yest_limit_quotes: [], movers_gt7: [] }
   }
 
   // stock_data API: { meta, concept_top, limit_up_list }
@@ -377,16 +396,34 @@ export function normalizeSnapshot(payload: unknown): RankSnapshot {
   const quotes = indexLimitUpList(
     root.limit_up_list ?? nested?.limit_up_list ?? root.limit_ups,
   )
+  const yestLimitQuotes = indexLimitUpList(
+    root.yest_limit_quotes ?? nested?.yest_limit_quotes ?? root.yestLimitQuotes,
+  )
+  const moversRaw = root.movers_gt7 ?? nested?.movers_gt7 ?? root.movers
+  const moversGt7 = Array.isArray(moversRaw)
+    ? moversRaw
+        .map(normalizeStock)
+        .filter((s): s is RankStock => s !== null)
+        .sort((a, b) => {
+          const pa = a.pct_chg ?? Number.NEGATIVE_INFINITY
+          const pb = b.pct_chg ?? Number.NEGATIVE_INFINITY
+          if (pb !== pa) return pb - pa
+          return a.stock_code.localeCompare(b.stock_code)
+        })
+    : []
   rank = enrichRankWithQuotes(rank, quotes)
-  // 二次剔除：即便旧快照把涨停股塞进 strong_stocks，也不计入强势口径
-  rank = rank.map((item) => {
-    if (item.strong_count == null) return item
-    const stocks = item.stocks.filter(
-      (s) => s.is_limit_up !== true && !quotes.has(s.stock_code),
-    )
-    if (stocks.length === item.stocks.length) return item
-    return { ...item, stocks, strong_count: stocks.length }
-  })
+    // 二次剔除：仅去掉仍封板；炸板(is_limit_up=false) 可留在强势池
+    rank = rank.map((item) => {
+      if (item.strong_count == null) return item
+      const stocks = item.stocks.filter((s) => {
+        if (s.is_limit_up === true) return false
+        const q = quotes.get(s.stock_code)
+        if (q?.is_limit_up === true) return false
+        return true
+      })
+      if (stocks.length === item.stocks.length) return item
+      return { ...item, stocks, strong_count: stocks.length }
+    })
   rank = fillMissingStockNames(rank, indexStockNames(rank, quotes))
 
   return {
@@ -395,6 +432,8 @@ export function normalizeSnapshot(payload: unknown): RankSnapshot {
       .sort((a, b) => b.limit_up_count - a.limit_up_count)
       .slice(0, CONCEPT_TOP_DISPLAY),
     limit_up_list: Array.from(quotes.values()),
+    yest_limit_quotes: Array.from(yestLimitQuotes.values()),
+    movers_gt7: moversGt7,
   }
 }
 

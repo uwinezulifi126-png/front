@@ -33,7 +33,7 @@ export function LadderView({ data, isWatched, onToggleWatch }: LadderViewProps) 
   if (data.length === 0) {
     return (
       <div className="empty-state">
-        <span className="mono">暂无连板数据（需涨停历史）</span>
+        <span className="mono">暂无连板数据</span>
       </div>
     )
   }

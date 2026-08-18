@@ -27,3 +27,25 @@ export function resolvePrevTradeDate(
 
   return normalizeTradeDate(fallback) || null
 }
+
+/**
+ * Trade date for「昨日涨停」tab.
+ *
+ * When viewing calendar today, prefer backend `yest_limit_trade_date` (flips at
+ * open-day 09:00 Asia/Shanghai). Replay of older days stays relative to selected.
+ */
+export function resolveYestLimitTradeDate(opts: {
+  selected: string
+  dates: string[]
+  today?: string | null
+  yestLimitTradeDate?: string | null
+  fallbackPrev?: string | null
+}): string | null {
+  const selected = normalizeTradeDate(opts.selected)
+  const today = normalizeTradeDate(opts.today)
+  const fromApi = normalizeTradeDate(opts.yestLimitTradeDate)
+  if (selected && today && selected === today && fromApi) {
+    return fromApi
+  }
+  return resolvePrevTradeDate(selected, opts.dates, opts.fallbackPrev)
+}

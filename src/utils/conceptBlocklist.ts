@@ -10,10 +10,16 @@
  * localStorage key: `front.concepts.custom` 仅作本地缓存 / 首次迁移上传。
  * 值：JSON { name; note?; members: { tsCode; code; name }[] }[]；
  * 仅出现在「概念列表 / 自选概念」，不进官方涨幅前十。
+ *
+ * 官方概念成分覆盖层：服务端 `GET/PUT /api/concepts/member-overrides`（PostgreSQL「概念成分覆盖」）。
+ * localStorage key: `front.concepts.memberOverrides` 仅作本地缓存 / 首次迁移上传。
+ * 值：JSON { conceptCode; blocked; extra }[]，按 concept_code 覆盖官方「股票概念」成分；
+ * 官方维度同步不会抹掉用户增删。
  */
 
 export const BLOCKED_STORAGE_KEY = 'front.concepts.blocked'
 export const CUSTOM_STORAGE_KEY = 'front.concepts.custom'
+export const MEMBER_OVERRIDE_STORAGE_KEY = 'front.concepts.memberOverrides'
 
 export type CustomConceptMember = {
   tsCode: string
@@ -25,6 +31,16 @@ export type CustomConcept = {
   name: string
   note?: string
   members: CustomConceptMember[]
+}
+
+export type OverlayMember = CustomConceptMember & {
+  source: 'official' | 'extra'
+}
+
+export type ConceptMemberOverride = {
+  conceptCode: string
+  blocked: CustomConceptMember[]
+  extra: CustomConceptMember[]
 }
 
 function shortCode(tsCodeOrCode: string): string {
@@ -147,6 +163,98 @@ export function normalizeCustomConcepts(items: unknown): CustomConcept[] {
     seen.add(normalized.name)
     out.push(normalized)
   }
+  return out
+}
+
+function normalizeOverrideMembers(raw: unknown): CustomConceptMember[] {
+  if (!Array.isArray(raw)) return []
+  const out: CustomConceptMember[] = []
+  const seen = new Set<string>()
+  for (const m of raw) {
+    if (!m || typeof m !== 'object') continue
+    const mr = m as Record<string, unknown>
+    const normalized = normalizeCustomMember({
+      tsCode: typeof mr.tsCode === 'string' ? mr.tsCode : typeof mr.ts_code === 'string' ? mr.ts_code : undefined,
+      code: typeof mr.code === 'string' ? mr.code : typeof mr.symbol === 'string' ? mr.symbol : undefined,
+      name: typeof mr.name === 'string' ? mr.name : undefined,
+    })
+    if (!normalized || seen.has(normalized.tsCode)) continue
+    seen.add(normalized.tsCode)
+    out.push(normalized)
+  }
+  return out
+}
+
+function normalizeMemberOverride(item: unknown): ConceptMemberOverride | null {
+  if (!item || typeof item !== 'object') return null
+  const rec = item as Record<string, unknown>
+  const conceptCode = String(rec.conceptCode ?? rec.concept_code ?? '')
+    .trim()
+    .toUpperCase()
+  if (!conceptCode) return null
+  const extra = normalizeOverrideMembers(rec.extra)
+  const extraTs = new Set(extra.map((m) => m.tsCode))
+  const blocked = normalizeOverrideMembers(rec.blocked).filter((m) => !extraTs.has(m.tsCode))
+  if (extra.length === 0 && blocked.length === 0) return null
+  return { conceptCode, blocked, extra }
+}
+
+export function normalizeMemberOverrides(items: unknown): ConceptMemberOverride[] {
+  if (!Array.isArray(items)) return []
+  const out: ConceptMemberOverride[] = []
+  const seen = new Set<string>()
+  for (const item of items) {
+    const normalized = normalizeMemberOverride(item)
+    if (!normalized || seen.has(normalized.conceptCode)) continue
+    seen.add(normalized.conceptCode)
+    out.push(normalized)
+  }
+  return out
+}
+
+export function loadMemberOverrides(): ConceptMemberOverride[] {
+  if (typeof window === 'undefined') return []
+  return normalizeMemberOverrides(safeParseJson(window.localStorage.getItem(MEMBER_OVERRIDE_STORAGE_KEY)))
+}
+
+export function saveMemberOverrides(items: ConceptMemberOverride[]): void {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(
+    MEMBER_OVERRIDE_STORAGE_KEY,
+    JSON.stringify(normalizeMemberOverrides(items)),
+  )
+}
+
+export function overrideKey(code: string, name?: string): string {
+  const c = code.trim().toUpperCase()
+  if (c) return c
+  const n = (name || '').trim()
+  return n ? `NAME:${n}` : ''
+}
+
+/** 官方成分 + 用户覆盖：extra 优先于 block；返回按代码排序的有效成分。 */
+export function applyMemberOverrides(
+  official: CustomConceptMember[],
+  override: ConceptMemberOverride | undefined,
+): OverlayMember[] {
+  const extra = override?.extra ?? []
+  const extraTs = new Set(extra.map((m) => m.tsCode))
+  const blockedTs = new Set(
+    (override?.blocked ?? []).map((m) => m.tsCode).filter((ts) => !extraTs.has(ts)),
+  )
+  const out: OverlayMember[] = []
+  const seen = new Set<string>()
+  for (const m of official) {
+    if (!m.tsCode || seen.has(m.tsCode) || blockedTs.has(m.tsCode)) continue
+    seen.add(m.tsCode)
+    out.push({ ...m, source: 'official' })
+  }
+  for (const m of extra) {
+    if (!m.tsCode || seen.has(m.tsCode)) continue
+    seen.add(m.tsCode)
+    out.push({ ...m, source: 'extra' })
+  }
+  out.sort((a, b) => a.code.localeCompare(b.code) || a.tsCode.localeCompare(b.tsCode))
   return out
 }
 

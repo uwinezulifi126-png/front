@@ -13,7 +13,6 @@ type ColId =
   | 'price'
   | 'pct'
   | 'amount'
-  | 'bidAmount'
   | 'riseSpeed'
   | 'limitTime'
   | 'opens'
@@ -26,7 +25,6 @@ const DEFAULT_ORDER: ColId[] = [
   'price',
   'pct',
   'amount',
-  'bidAmount',
   'riseSpeed',
   'limitTime',
   'opens',
@@ -78,8 +76,13 @@ function buildColDefs(
       label: '涨幅%',
       sortKey: 'pct',
       thClass: 'sortable',
-      tdClass: 'mono text-right up',
-      render: (s) => (s.pct ? `+${s.pct.toFixed(2)}%` : '—'),
+      tdClass: 'mono text-right',
+      render: (s) => {
+        if (!Number.isFinite(s.pct) || s.pct === 0) return '—'
+        const cls = s.pct > 0 ? 'up' : 'down'
+        const text = s.pct > 0 ? `+${s.pct.toFixed(2)}%` : `${s.pct.toFixed(2)}%`
+        return <span className={cls}>{text}</span>
+      },
     },
     amount: {
       id: 'amount',
@@ -88,14 +91,6 @@ function buildColDefs(
       thClass: 'sortable',
       tdClass: 'mono text-right',
       render: (s) => (s.amount ? s.amount.toFixed(1) : '—'),
-    },
-    bidAmount: {
-      id: 'bidAmount',
-      label: '封单(亿)',
-      sortKey: 'bidAmount',
-      thClass: 'sortable',
-      tdClass: 'mono text-right accent',
-      render: (s) => (s.bidAmount != null ? s.bidAmount.toFixed(1) : '—'),
     },
     riseSpeed: {
       id: 'riseSpeed',
