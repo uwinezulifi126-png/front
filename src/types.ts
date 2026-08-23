@@ -31,6 +31,8 @@ export interface KlineBar {
   high: number
   low: number
   close: number
+  /** 昨收价；null 时图表用前一根收盘价推算涨停价 */
+  preClose: number | null
   volume: number | null
   amount: number | null
   pctChg: number | null

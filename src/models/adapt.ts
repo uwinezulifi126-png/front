@@ -537,64 +537,71 @@ export function adaptLadder(
   return []
 }
 
+/** 「昨日涨停强势」：昨日 U 类涨停 + 今日涨幅 >5%（严格大于）；含今日仍封板。 */
+export const YEST_STRONG_MIN_PCT = 5
+
 export function adaptStrong(snapshot: RankSnapshot | null): StrongStock[] {
-  if (!snapshot?.rank.length) return []
-  // 与涨停榜一致：limit_up_list / is_limit_up 标记的涨停股不计入强势个股
-  // 服务端已要求昨日首板（连板数=1）；此处仅做当日涨停兜底剔除
-  const limitUpCodes = new Set(
-    (snapshot.limit_up_list ?? []).map((s) => s.stock_code).filter(Boolean),
-  )
-  const seen = new Set<string>()
-  const out: StrongStock[] = []
-  for (const c of snapshot.rank) {
-    for (const s of c.stocks) {
-      if (seen.has(s.stock_code)) continue
-      if (s.is_limit_up === true) continue
-      if (limitUpCodes.has(s.stock_code)) continue
-      seen.add(s.stock_code)
+  const list = snapshot?.yest_limit_quotes
+  if (!list?.length) return []
+  const rank = snapshot?.rank ?? []
+  return list
+    .filter((s) => (s.pct_chg ?? 0) > YEST_STRONG_MIN_PCT)
+    .map((s) => {
       const pct = s.pct_chg ?? 0
-      out.push({
+      const concept = conceptOf(s.stock_code, rank)
+      return {
         code: shortCode(s.stock_code),
         name: displayStockName(s.stock_name, s.stock_code),
         price: s.close ?? 0,
         pct,
         amount: amountYi(s.amount),
-        sector: c.concept_name,
+        sector: concept,
         score: Math.round(Math.min(99, Math.max(1, pct * 8))),
-        tag: c.concept_name,
-        reason: s.theme ?? c.reason ?? c.theme ?? `${c.concept_name} · 涨幅 ${pct.toFixed(2)}%`,
+        tag: concept,
+        reason: `${concept || '昨日涨停'} · 今日涨幅 ${pct.toFixed(2)}%`,
         mktCap: circMvYi(s.circ_mv),
-        industry: s.industry ?? c.concept_name,
+        industry: s.industry ?? concept,
         riseSpeed: s.rise_speed ?? 0,
-      })
-    }
-  }
-  return out.sort((a, b) => b.pct - a.pct)
+      }
+    })
+    .sort((a, b) => b.pct - a.pct)
 }
 
-/** 「个股」Tab：全市场涨幅>7%，展示全部概念 */
+/** 「强势未涨停个股」Tab：全市场涨幅>7%且未封板，展示全部概念 */
 export function adaptMovers(snapshot: RankSnapshot | null): MoverStock[] {
   const list = snapshot?.movers_gt7
   if (!list?.length) return []
-  return list.map((s) => {
-    const concepts = (s.concepts ?? [])
-      .map((c) => (c.concept_name || '').trim())
-      .filter(Boolean)
-    return {
-      code: shortCode(s.stock_code),
-      tsCode: s.stock_code,
-      name: displayStockName(s.stock_name, s.stock_code),
-      price: s.close ?? 0,
-      pct: s.pct_chg ?? 0,
-      amount: amountYi(s.amount),
-      mktCap: circMvYi(s.circ_mv),
-      industry: s.industry ?? '',
-      board: s.board_label || s.board || '',
-      isLimitUp: s.is_limit_up === true,
-      concepts,
-      riseSpeed: s.rise_speed ?? null,
-    }
-  })
+  const sealedCodes = new Set(
+    (snapshot?.limit_up_list ?? [])
+      .filter((s) => s.is_limit_up !== false)
+      .map((s) => s.stock_code)
+      .filter(Boolean),
+  )
+  return list
+    .filter((s) => {
+      if (s.is_limit_up === true) return false
+      if (sealedCodes.has(s.stock_code)) return false
+      return (s.pct_chg ?? 0) > 7
+    })
+    .map((s) => {
+      const concepts = (s.concepts ?? [])
+        .map((c) => (c.concept_name || '').trim())
+        .filter(Boolean)
+      return {
+        code: shortCode(s.stock_code),
+        tsCode: s.stock_code,
+        name: displayStockName(s.stock_name, s.stock_code),
+        price: s.close ?? 0,
+        pct: s.pct_chg ?? 0,
+        amount: amountYi(s.amount),
+        mktCap: circMvYi(s.circ_mv),
+        industry: s.industry ?? '',
+        board: s.board_label || s.board || '',
+        isLimitUp: false,
+        concepts,
+        riseSpeed: s.rise_speed ?? null,
+      }
+    })
 }
 
 export function adaptSentiment(snapshot: RankSnapshot | null): { label: string; val: number; color: string }[] {

@@ -47,7 +47,7 @@ export function WatchlistView({ watchlist, quoteStocks, onOpenFloat }: Watchlist
     return (
       <div className="empty-state watchlist-empty">
         <span className="mono">暂无自选股票</span>
-        <span className="muted">在涨停表、连板天梯、强势个股或板块个股列表中点击「添加自选」</span>
+        <span className="muted">在涨停表、连板天梯、昨日涨停强势或板块个股列表中点击「添加自选」</span>
         {onOpenFloat && (
           <button type="button" className="watch-float-launch" onClick={onOpenFloat}>
             弹出悬浮窗

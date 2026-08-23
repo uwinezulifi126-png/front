@@ -804,6 +804,9 @@ button:disabled {
 .name {
   font-weight: 500;
 }
+.name-yest-limit {
+  color: #c084fc;
+}
 .sector-tag {
   display: inline-block;
   font-size: 12px;

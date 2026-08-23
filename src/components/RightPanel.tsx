@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react'
-import { fetchPromotionRate } from '../api/client'
-import type { PromotionRateItem } from '../models/apiTypes'
+import { useEffect, useMemo, useState } from 'react'
+import { fetchLimitHistory } from '../api/client'
+import type { LimitHistoryItem } from '../models/apiTypes'
+import { type BoardFilterOpts } from '../utils/boardFilter'
+import { computePromotionRateFromHistory } from '../utils/promotionRate'
+import { normalizeTradeDate, resolvePrevTradeDate } from '../utils/tradeDate'
 
 type Sentiment = { label: string; val: number; color: string }
 
@@ -8,6 +11,11 @@ type RightPanelProps = {
   sentiment?: Sentiment[]
   /** 顶栏/复盘选中的交易日 YYYY-MM-DD，晋级率随其切换 */
   selectedDate?: string
+  boardOpts: BoardFilterOpts
+  /** 当日涨停历史（与连板天梯同源） */
+  todayHistory?: LimitHistoryItem[]
+  calendarDates?: string[]
+  fallbackPrev?: string | null
 }
 
 function formatRate(rate: number | null): string {
@@ -16,43 +24,72 @@ function formatRate(rate: number | null): string {
 }
 
 /** 0/0 无样本行不展示（如六板0/0、七板0/0） */
-function shouldShowPromotionRow(it: PromotionRateItem): boolean {
+function shouldShowPromotionRow(it: { base: number; promoted: number }): boolean {
   return !(it.base === 0 && it.promoted === 0)
 }
 
-export function RightPanel({ sentiment = [], selectedDate = '' }: RightPanelProps) {
-  const [items, setItems] = useState<PromotionRateItem[]>([])
+export function RightPanel({
+  sentiment = [],
+  selectedDate = '',
+  boardOpts,
+  todayHistory = [],
+  calendarDates = [],
+  fallbackPrev = null,
+}: RightPanelProps) {
+  const [prevHistory, setPrevHistory] = useState<LimitHistoryItem[]>([])
+  const [prevTradeDate, setPrevTradeDate] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
 
   useEffect(() => {
     if (!selectedDate) {
-      setItems([])
+      setPrevHistory([])
+      setPrevTradeDate(null)
       setError(null)
-      setMessage(null)
+      setLoading(false)
+      return
+    }
+    const prev = resolvePrevTradeDate(selectedDate, calendarDates, fallbackPrev)
+    setPrevTradeDate(prev)
+    if (!prev) {
+      setPrevHistory([])
+      setError(null)
       setLoading(false)
       return
     }
     const ac = new AbortController()
     setLoading(true)
     setError(null)
-    setMessage(null)
-    fetchPromotionRate(selectedDate, ac.signal)
-      .then((res) => {
-        setItems(res.items)
-        setMessage(res.message ?? null)
-      })
+    fetchLimitHistory(prev, ac.signal)
+      .then((res) => setPrevHistory(res.items))
       .catch((err: unknown) => {
         if (ac.signal.aborted) return
-        setItems([])
-        setError(err instanceof Error ? err.message : '连板晋级率加载失败')
+        setPrevHistory([])
+        setError(err instanceof Error ? err.message : '上一交易日涨停历史加载失败')
       })
       .finally(() => {
         if (!ac.signal.aborted) setLoading(false)
       })
     return () => ac.abort()
-  }, [selectedDate])
+  }, [selectedDate, calendarDates, fallbackPrev])
+
+  const message = useMemo(() => {
+    if (!selectedDate) return null
+    if (!prevTradeDate) return '无法解析上一开市日'
+    const todayHas = todayHistory.length > 0
+    const prevHas = prevHistory.length > 0
+    if (!todayHas && !prevHas) {
+      return `涨停历史缺失（${normalizeTradeDate(selectedDate)} 与 ${prevTradeDate}）`
+    }
+    if (!todayHas) return `涨停历史缺失（${normalizeTradeDate(selectedDate)}）`
+    if (!prevHas) return `涨停历史缺失（上一开市日 ${prevTradeDate}）`
+    return null
+  }, [selectedDate, prevTradeDate, todayHistory.length, prevHistory.length])
+
+  const items = useMemo(
+    () => computePromotionRateFromHistory(todayHistory, prevHistory, boardOpts),
+    [todayHistory, prevHistory, boardOpts],
+  )
 
   const visiblePromotionItems = items.filter(shouldShowPromotionRow)
 
@@ -79,11 +116,6 @@ export function RightPanel({ sentiment = [], selectedDate = '' }: RightPanelProp
             ))}
           </div>
         )}
-      </div>
-
-      <div className="panel-block">
-        <div className="panel-title">龙虎榜主力</div>
-        <div className="mono muted">暂无接口，不展示</div>
       </div>
 
       <div className="panel-block">

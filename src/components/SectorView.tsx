@@ -14,7 +14,6 @@ type ColId =
   | 'code'
   | 'price'
   | 'pct'
-  | 'bidAmount'
   | 'limitTime'
   | 'riseSpeed'
   | 'opens'
@@ -25,7 +24,6 @@ const DEFAULT_ORDER: ColId[] = [
   'code',
   'price',
   'pct',
-  'bidAmount',
   'limitTime',
   'riseSpeed',
   'opens',
@@ -75,13 +73,6 @@ function buildColDefs(
       thClass: 'text-right',
       tdClass: 'mono text-right up',
       render: (s) => (s.pct ? `+${s.pct.toFixed(2)}%` : '—'),
-    },
-    bidAmount: {
-      id: 'bidAmount',
-      label: '封单(亿)',
-      thClass: 'text-right',
-      tdClass: 'mono text-right accent',
-      render: (s) => (s.bidAmount != null ? s.bidAmount.toFixed(1) : '—'),
     },
     limitTime: {
       id: 'limitTime',

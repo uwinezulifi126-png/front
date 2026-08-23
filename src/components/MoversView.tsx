@@ -10,18 +10,20 @@ const COL_COUNT = 8
 
 type MoversViewProps = {
   data: MoverStock[]
+  /** 昨日涨停（yest_limit_trade_date）代码集合 → 名称紫色 */
+  yestLimitCodes?: ReadonlySet<string>
   isWatched?: (codeOrTs: string) => boolean
   onToggleWatch?: (stock: WatchInput) => void
 }
 
-export function MoversView({ data, isWatched, onToggleWatch }: MoversViewProps) {
+export function MoversView({ data, yestLimitCodes, isWatched, onToggleWatch }: MoversViewProps) {
   const [sortKey, setSortKey] = useState<SortKey>('pct')
   const [selected, setSelected] = useState<MoverStock | null>(null)
 
   if (data.length === 0) {
     return (
       <div className="empty-state">
-        <span className="mono">暂无涨幅超过 7% 的个股</span>
+        <span className="mono">暂无涨幅超过 7% 的未涨停个股</span>
       </div>
     )
   }
@@ -55,6 +57,9 @@ export function MoversView({ data, isWatched, onToggleWatch }: MoversViewProps) 
           {sorted.map((s) => {
             const isSelected = selected?.code === s.code
             const pctClass = s.pct > 0 ? 'up' : s.pct < 0 ? 'down' : ''
+            const yestLimit =
+              !!yestLimitCodes &&
+              (yestLimitCodes.has(s.tsCode) || yestLimitCodes.has(s.code))
             return (
               <Fragment key={s.tsCode || s.code}>
                 <tr
@@ -63,14 +68,7 @@ export function MoversView({ data, isWatched, onToggleWatch }: MoversViewProps) 
                 >
                   <td className="text-left">
                     <div className="code mono">{s.code}</div>
-                    <div className="name">
-                      {s.name}
-                      {s.isLimitUp ? (
-                        <span className="badge badge-locked" style={{ marginLeft: 6 }}>
-                          涨停
-                        </span>
-                      ) : null}
-                    </div>
+                    <div className={`name${yestLimit ? ' name-yest-limit' : ''}`}>{s.name}</div>
                   </td>
                   <td className={`text-right mono ${pctClass}`}>
                     {s.price ? s.price.toFixed(2) : '—'}

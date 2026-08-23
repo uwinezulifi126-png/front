@@ -16,14 +16,19 @@ import {
 } from 'lightweight-charts'
 import { fetchIntraday } from '../api/client'
 import type { IntradayPoint, KlineBar } from '../types'
+import { isLimitUpClose, resolvePreClose } from '../utils/limitUp'
 
 const UP_COLOR = '#f85149'
 const DOWN_COLOR = '#3fb950'
+const LIMIT_UP_BORDER_COLOR = '#a855f7'
+const HOLLOW_FILL = 'rgba(0,0,0,0)'
 const INTRADAY_DEBOUNCE_MS = 400
 
 type KlineChartProps = {
   bars: KlineBar[]
   tsCode: string
+  /** Stock name for ST 5% limit-up rule */
+  name?: string | null
   height?: number
 }
 
@@ -55,14 +60,35 @@ function toYmd(tradeDate: string): string {
   return tradeDate.replace(/-/g, '').slice(0, 8)
 }
 
-function toCandleData(bars: KlineBar[]): CandlestickData<Time>[] {
-  return bars.map((b) => ({
-    time: toTimeKey(b.tradeDate) as Time,
-    open: b.open,
-    high: b.high,
-    low: b.low,
-    close: b.close,
-  }))
+function toCandleData(
+  bars: KlineBar[],
+  tsCode: string,
+  name?: string | null,
+): CandlestickData<Time>[] {
+  let prevClose: number | null = null
+  const out: CandlestickData<Time>[] = []
+  for (const b of bars) {
+    const preClose = resolvePreClose(b, prevClose)
+    const base: CandlestickData<Time> = {
+      time: toTimeKey(b.tradeDate) as Time,
+      open: b.open,
+      high: b.high,
+      low: b.low,
+      close: b.close,
+    }
+    if (preClose != null && isLimitUpClose(tsCode, b.close, preClose, name)) {
+      out.push({
+        ...base,
+        color: HOLLOW_FILL,
+        borderColor: LIMIT_UP_BORDER_COLOR,
+        wickColor: LIMIT_UP_BORDER_COLOR,
+      })
+    } else {
+      out.push(base)
+    }
+    prevClose = b.close
+  }
+  return out
 }
 
 function toVolumeData(bars: KlineBar[]): HistogramData<Time>[] {
@@ -195,7 +221,7 @@ function IntradayMiniChart({ items }: { items: IntradayPoint[] }) {
   return <div className="kline-intraday-chart" ref={hostRef} />
 }
 
-export function KlineChart({ bars, tsCode, height = 300 }: KlineChartProps) {
+export function KlineChart({ bars, tsCode, name, height = 300 }: KlineChartProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const hostRef = useRef<HTMLDivElement | null>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -453,14 +479,14 @@ export function KlineChart({ bars, tsCode, height = 300 }: KlineChartProps) {
     const volume = volumeRef.current
     const chart = chartRef.current
     if (!candle || !volume || !chart) return
-    candle.setData(toCandleData(bars))
+    candle.setData(toCandleData(bars, tsCode, name))
     volume.setData(toVolumeData(bars))
     // Only re-fit when bar count changes (avoid zoom reset on live OHLC poll).
     if (bars.length !== fittedLenRef.current) {
       chart.timeScale().fitContent()
       fittedLenRef.current = bars.length
     }
-  }, [bars])
+  }, [bars, tsCode, name])
 
   const tipBar = tooltip?.bar
   const tipUp = tipBar != null && tipBar.close >= tipBar.open

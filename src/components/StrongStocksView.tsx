@@ -22,7 +22,7 @@ export function StrongStocksView({ data, isWatched, onToggleWatch }: StrongStock
   if (data.length === 0) {
     return (
       <div className="empty-state">
-        <span className="mono">暂无强势股数据</span>
+        <span className="mono">暂无昨日涨停强势数据</span>
       </div>
     )
   }

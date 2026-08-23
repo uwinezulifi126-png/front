@@ -351,6 +351,7 @@ export async function fetchKline(
             high,
             low,
             close,
+            preClose: pickNum(r, ['昨收价', 'pre_close', 'preClose']) ?? null,
             volume: pickNum(r, ['成交量', 'vol', 'volume']),
             amount: pickNum(r, ['成交额', 'amount']),
             pctChg: pickNum(r, ['涨跌幅', 'pct_chg']),

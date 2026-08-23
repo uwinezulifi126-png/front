@@ -82,6 +82,14 @@ export default function App() {
   const ladder = useMemo(() => filterLadder(feed.ladder, boardOpts), [feed.ladder, boardOpts])
   const strong = useMemo(() => filterStrong(feed.strong, boardOpts), [feed.strong, boardOpts])
   const movers = useMemo(() => filterByBoard(feed.movers, boardOpts), [feed.movers, boardOpts])
+  const yestLimitCodes = useMemo(() => {
+    const codes = new Set<string>()
+    for (const s of feed.yesterdayStocks) {
+      if (s.tsCode) codes.add(s.tsCode)
+      if (s.code) codes.add(s.code)
+    }
+    return codes
+  }, [feed.yesterdayStocks])
 
   // 板过滤后按 stock_codes ∩ 可见涨停池重算家数（一股可属多概念）→ 概念屏蔽 → 涨停前十
   const sectorHeat = useMemo(() => {
@@ -128,12 +136,12 @@ export default function App() {
     { key: 'locked', label: `封板 (${lockedStocks.length})` },
     { key: 'open', label: `炸板 (${openStocks.length})` },
     { key: 'watchlist', label: `自选 (${watchlist.count})` },
-    { key: 'movers', label: `个股 (${movers.length})` },
+    { key: 'movers', label: `强势未涨停个股 (${movers.length})` },
     { key: 'sector', label: '板块' },
     { key: 'concepts', label: '概念列表' },
     { key: 'news', label: '财经新闻' },
     { key: 'ladder', label: '连板天梯' },
-    { key: 'strong', label: '强势个股' },
+    { key: 'strong', label: `昨日涨停强势 (${strong.length})` },
   ]
 
   const todayCount =
@@ -236,6 +244,7 @@ export default function App() {
             ) : activeTab === 'movers' ? (
               <MoversView
                 data={movers}
+                yestLimitCodes={yestLimitCodes}
                 isWatched={watchlist.isWatched}
                 onToggleWatch={watchlist.toggle}
               />
@@ -294,7 +303,14 @@ export default function App() {
           </div>
         </div>
 
-        <RightPanel sentiment={feed.sentiment} selectedDate={feed.selectedDate} />
+        <RightPanel
+          sentiment={feed.sentiment}
+          selectedDate={feed.selectedDate}
+          boardOpts={boardOpts}
+          todayHistory={feed.history}
+          calendarDates={feed.calendar?.dates ?? []}
+          fallbackPrev={feed.meta?.prev_trade_date ?? feed.calendar?.status.prev_trade_date ?? null}
+        />
       </div>
 
       <WatchlistFloat watchlist={watchlist} quoteStocks={watchQuotes} />
