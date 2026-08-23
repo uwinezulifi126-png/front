@@ -313,7 +313,12 @@ export default function App() {
         />
       </div>
 
-      <WatchlistFloat watchlist={watchlist} quoteStocks={watchQuotes} />
+      <WatchlistFloat
+        watchlist={watchlist}
+        quoteStocks={watchQuotes}
+        selectedDate={feed.selectedDate}
+        isLive={feed.viewKind === 'live'}
+      />
 
       <footer className="footer">
         <span>数据仅供参考，不构成投资建议 · 交易有风险，投资须谨慎</span>

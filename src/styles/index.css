@@ -11,6 +11,7 @@
   --up-bright: #fc5252;
   --down: #38a169;
   --down-bright: #48bb78;
+  --purple-bright: #b794f4;
   --flat: #718096;
 }
 
@@ -443,6 +444,18 @@ button:disabled {
   overflow: hidden;
   border-bottom: none;
   flex-shrink: 1;
+}
+.alert-panel-compact {
+  padding: 8px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1;
+}
+.alert-panel-compact .panel-title {
+  font-size: 11px;
+  margin-bottom: 6px;
 }
 .alert-panel-hint {
   flex-shrink: 0;
@@ -1493,6 +1506,24 @@ button:disabled {
   border-radius: 2px;
   overflow: hidden;
 }
+@keyframes watch-float-alert-pulse {
+  0%,
+  100% {
+    border-color: var(--border);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+    background: var(--card);
+  }
+  50% {
+    border-color: #f6ad55;
+    box-shadow:
+      0 0 22px rgba(246, 173, 85, 0.7),
+      0 8px 28px rgba(0, 0, 0, 0.55);
+    background: rgba(246, 173, 85, 0.1);
+  }
+}
+.watch-float.alert-flash {
+  animation: watch-float-alert-pulse 0.55s ease-in-out infinite;
+}
 .watch-float-head {
   display: flex;
   align-items: center;
@@ -1505,11 +1536,29 @@ button:disabled {
   user-select: none;
   flex-shrink: 0;
 }
-.watch-float-title {
+.watch-float-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.watch-float-tab {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  color: var(--muted-foreground);
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.watch-float-tab:hover:not(.active) {
+  color: var(--foreground);
+  background: var(--secondary);
+}
+.watch-float-tab.active {
+  background: var(--up);
+  color: #fff;
 }
 .watch-float-actions {
   display: inline-flex;
@@ -1532,7 +1581,20 @@ button:disabled {
 .watch-float-body {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+}
+.watch-float-watch {
+  height: 100%;
+  min-height: 0;
   overflow: auto;
+}
+.watch-float-alerts.alert-panel {
+  height: 100%;
+  min-height: 0;
+  border-bottom: none;
+}
+.watch-float-alerts.alert-panel .panel-title {
+  display: none;
 }
 .watch-float-empty {
   padding: 24px;

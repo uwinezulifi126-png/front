@@ -131,11 +131,10 @@ export function useWatchlistQuotes(opts: {
     for (const item of items) {
       const q =
         map.get(item.tsCode.toUpperCase()) ?? map.get(item.code.toUpperCase())
-      if (!q) continue
       const key = item.tsCode.toUpperCase()
       if (seen.has(key)) continue
       seen.add(key)
-      out.push(emptyStock(item, q))
+      out.push(emptyStock(item, q ?? {}))
     }
     return out
   }, [items, extra, snapshotQuotes])
