@@ -45,6 +45,30 @@ export const endpoints = {
   /** 财联社深度头条（服务端缓存，非直连 cls.cn） */
   clsDepth: `${API_BASE_URL}/api/news/cls/depth`,
   clsDepthArticle: (id: number) => `${API_BASE_URL}/api/news/cls/depth/article/${id}`,
+  /** 证券时报首页头条（服务端缓存） */
+  stcnHeadlines: `${API_BASE_URL}/api/news/stcn/headlines`,
+  /** 证券时报要闻（服务端缓存） */
+  stcnYw: `${API_BASE_URL}/api/news/stcn/yw`,
+  stcnArticle: (id: number) => `${API_BASE_URL}/api/news/stcn/article/${id}`,
+  /** 东方财富快讯焦点（服务端缓存） */
+  eastmoneyYw: `${API_BASE_URL}/api/news/eastmoney/yw`,
+  /** 东方财富首页头条（服务端缓存） */
+  eastmoneyHeadlines: `${API_BASE_URL}/api/news/eastmoney/headlines`,
+  eastmoneyArticle: (id: number) => `${API_BASE_URL}/api/news/eastmoney/article/${id}`,
+  /** 中国证券报首页头条（服务端缓存） */
+  csHeadlines: `${API_BASE_URL}/api/news/cs/headlines`,
+  /** 中国证券报财经要闻（服务端缓存） */
+  csCjyw: `${API_BASE_URL}/api/news/cs/cjyw`,
+  csArticle: (id: number) => `${API_BASE_URL}/api/news/cs/article/${id}`,
+  /** 淘股吧极速快讯「全部」（服务端缓存） */
+  tgbAll: `${API_BASE_URL}/api/news/tgb/all`,
+  /** 淘股吧极速快讯「加红」（服务端缓存） */
+  tgbJiahong: `${API_BASE_URL}/api/news/tgb/jiahong`,
+  /** 同花顺财经首页头条（服务端缓存） */
+  jqkaHeadlines: `${API_BASE_URL}/api/news/jqka/headlines`,
+  /** 同花顺财经 A股 7x24（服务端缓存） */
+  jqkaAstock: `${API_BASE_URL}/api/news/jqka/astock`,
+  jqkaArticle: (id: number) => `${API_BASE_URL}/api/news/jqka/article/${id}`,
   /** 实时预警（盘中检测落库；可按交易日查近一年） */
   alerts: `${API_BASE_URL}/api/alerts`,
   /** 同花顺概念全量列表（DB 维度表） */

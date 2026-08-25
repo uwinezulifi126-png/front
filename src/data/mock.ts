@@ -142,25 +142,22 @@ export const BOARD_RATES = [
 export const NEWS_DATA: NewsItem[] = [
   // 昨日新闻头条
   { time: '昨日 21:45', tag: '财联社', urgent: true, category: 'yesterday', title: '央行宣布下调MLF利率10bp，释放流动性信号', body: '中国人民银行宣布，中期借贷便利（MLF）操作利率下调10个基点，至2.40%，本次操作规模1200亿元，市场流动性预期宽松。' },
-  { time: '昨日 20:10', tag: '政策', urgent: true, category: 'yesterday', title: '证监会：研究优化转融通机制，限制做空行为', body: '证监会新闻发言人表示，正在研究进一步优化转融通相关制度，防范过度做空行为，切实维护市场公平秩序。' },
+  { time: '昨日 20:10', tag: '同花顺财经', urgent: true, category: 'yesterday', title: '证监会：研究优化转融通机制，限制做空行为', body: '证监会新闻发言人表示，正在研究进一步优化转融通相关制度，防范过度做空行为，切实维护市场公平秩序。' },
   { time: '昨日 18:30', tag: '财联社', urgent: false, category: 'yesterday', title: '7月CPI同比+0.8%，PPI同比-1.2%，通缩压力仍存', body: '国家统计局公布7月物价数据，CPI同比上涨0.8%，低于预期；PPI同比下降1.2%，工业品价格持续承压。' },
   { time: '昨日 17:55', tag: '证券时报', urgent: false, category: 'yesterday', title: '国防白皮书发布，未来五年军费增速维持8%以上', body: '国防部发布年度国防白皮书，明确未来五年国防预算增速不低于8%，重点支持信息化、智能化武器装备研发采购。' },
-  { time: '昨日 16:20', tag: '热点', urgent: false, category: 'yesterday', title: '两市成交额连续三日破万亿，杠杆资金小幅回升', body: '沪深两市成交额连续三个交易日突破万亿元，融资余额较前一交易日增加约48亿元，市场交投情绪有所回暖。' },
-  // 实时新闻：其它来源仍为示例；财联社实时改由 API（加红电报），不再用 mock 冒充
-  { time: '13:52', tag: '热点', urgent: false, category: 'realtime', title: '工信部：加快推进人工智能产业发展专项政策落地', body: '工信部召开新闻发布会，强调加快AI大模型在制造业、医疗、教育等领域落地应用，相关配套政策将于下季度出台。' },
-  { time: '13:48', tag: '上海证券报', urgent: false, category: 'realtime', title: '宁德时代麒麟3.0电池实现量产，能量密度再创新高', body: '宁德时代官方确认麒麟3.0电池系列正式进入量产阶段，能量密度达到330Wh/kg，较上代提升18%，首批供货比亚迪汉EV车型。' },
+  { time: '昨日 16:20', tag: '淘股吧', urgent: false, category: 'yesterday', title: '两市成交额连续三日破万亿，杠杆资金小幅回升', body: '沪深两市成交额连续三个交易日突破万亿元，融资余额较前一交易日增加约48亿元，市场交投情绪有所回暖。' },
+  // 实时新闻：其它来源仍为示例；财联社/证券时报/东方财富实时改由 API
+  { time: '13:52', tag: '淘股吧', urgent: false, category: 'realtime', title: '工信部：加快推进人工智能产业发展专项政策落地', body: '工信部召开新闻发布会，强调加快AI大模型在制造业、医疗、教育等领域落地应用，相关配套政策将于下季度出台。' },
   { time: '13:41', tag: '中国证券报', urgent: false, category: 'realtime', title: '海光信息获国家大基金三期战略入股，持股比例5.2%', body: '国家集成电路产业投资基金三期正式入股海光信息，持股5.2%，成为第三大股东，国产算力芯片发展再获重磅背书。' },
-  { time: '13:35', tag: '北向', urgent: false, category: 'realtime', title: '北向资金今日净流入82.4亿，连续三日净买入', body: '截至午盘，沪深股通北向资金合计净流入82.4亿元，重点加仓食品饮料、电力设备、银行板块。' },
 ]
 
 export const NEWS_TAG_COLORS: Record<string, string> = {
   财联社: '#b794f4',
-  热点: '#fc5252',
-  上海证券报: '#48bb78',
-  政策: '#f6ad55',
+  淘股吧: '#fc5252',
+  同花顺财经: '#f6ad55',
   中国证券报: '#76e4f7',
   证券时报: '#fc8181',
-  北向: '#68d391',
+  东方财富: '#68d391',
 }
 
 export const LADDER_DATA: LadderRow[] = [

@@ -705,6 +705,610 @@ export async function fetchClsDepthArticle(
   return item
 }
 
+export interface StcnNewsResponse {
+  items: NewsItem[]
+  count: number
+  latestFetchedAt: string | null
+  error: string | null
+  days: number | null
+}
+
+function mapStcnItem(row: unknown, category: 'yesterday' | 'realtime'): NewsItem | null {
+  const r = asRecord(row) ?? {}
+  const title = String(r['标题'] ?? r.title ?? '')
+  const content = String(r['正文'] ?? r.content ?? '')
+  const brief = String(r['摘要'] ?? r.brief ?? '')
+  const body = content || brief || title
+  if (!title && !body) return null
+  const published = String(r['发布时间'] ?? r.published_at ?? '')
+  const rawId = r.id ?? r['文章id']
+  const idNum =
+    typeof rawId === 'number'
+      ? rawId
+      : typeof rawId === 'string' && rawId.trim()
+        ? Number(rawId)
+        : Number.NaN
+  const hasId = Number.isFinite(idNum)
+  const url = String(r['分享链接'] ?? r.share_url ?? '').trim()
+  return {
+    time: formatClsTime(published),
+    tag: '证券时报',
+    urgent: false,
+    title: title || body.slice(0, 80) || '（无标题）',
+    body: body || title,
+    category,
+    publishedAt: published || undefined,
+    id: hasId ? idNum : undefined,
+    url: url || (hasId ? `https://www.stcn.com/article/detail/${idNum}.html` : undefined),
+  }
+}
+
+/** 证券时报首页头条（读自家 API 缓存，→ 昨日新闻头条） */
+export async function fetchStcnHeadlines(
+  opts?: { days?: number; limit?: number; signal?: AbortSignal },
+): Promise<StcnNewsResponse> {
+  const url = toApiUrl(endpoints.stcnHeadlines)
+  url.searchParams.set('days', String(opts?.days ?? 7))
+  url.searchParams.set('limit', String(opts?.limit ?? 50))
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`证券时报头条请求失败 (${res.status})`)
+  const json: unknown = await res.json()
+  const root = asRecord(json) ?? {}
+  const itemsRaw = root.items
+  const items: NewsItem[] = Array.isArray(itemsRaw)
+    ? itemsRaw
+        .map((row) => mapStcnItem(row, 'yesterday'))
+        .filter((x): x is NewsItem => x != null)
+    : []
+  return {
+    items,
+    count: typeof root.count === 'number' ? root.count : items.length,
+    days: typeof root.days === 'number' ? root.days : null,
+    latestFetchedAt:
+      typeof root['最新抓取时间'] === 'string'
+        ? root['最新抓取时间']
+        : typeof root.latest_fetched_at === 'string'
+          ? root.latest_fetched_at
+          : null,
+    error: typeof root.error === 'string' ? root.error : null,
+  }
+}
+
+/** 证券时报要闻（读自家 API 缓存，→ 实时新闻） */
+export async function fetchStcnYw(
+  opts?: { days?: number; limit?: number; signal?: AbortSignal },
+): Promise<StcnNewsResponse> {
+  const url = toApiUrl(endpoints.stcnYw)
+  url.searchParams.set('days', String(opts?.days ?? 3))
+  url.searchParams.set('limit', String(opts?.limit ?? 100))
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`证券时报要闻请求失败 (${res.status})`)
+  const json: unknown = await res.json()
+  const root = asRecord(json) ?? {}
+  const itemsRaw = root.items
+  const items: NewsItem[] = Array.isArray(itemsRaw)
+    ? itemsRaw.map((row) => mapStcnItem(row, 'realtime')).filter((x): x is NewsItem => x != null)
+    : []
+  return {
+    items,
+    count: typeof root.count === 'number' ? root.count : items.length,
+    days: typeof root.days === 'number' ? root.days : null,
+    latestFetchedAt:
+      typeof root['最新抓取时间'] === 'string'
+        ? root['最新抓取时间']
+        : typeof root.latest_fetched_at === 'string'
+          ? root.latest_fetched_at
+          : null,
+    error: typeof root.error === 'string' ? root.error : null,
+  }
+}
+
+/** 单篇证券时报详情；可选按需补全正文 */
+export async function fetchStcnArticle(
+  articleId: number,
+  opts?: { category?: 'headline' | 'yw'; ensureFull?: boolean; signal?: AbortSignal },
+): Promise<NewsItem> {
+  const url = toApiUrl(endpoints.stcnArticle(articleId))
+  url.searchParams.set('category', opts?.category ?? 'yw')
+  if (opts?.ensureFull === false) {
+    url.searchParams.set('ensure_full', 'false')
+  }
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`证券时报详情请求失败 (${res.status})`)
+  const json: unknown = await res.json()
+  const root = asRecord(json) ?? {}
+  const cat = String(root.category ?? opts?.category ?? 'yw')
+  const newsCategory = cat === 'headline' ? 'yesterday' : 'realtime'
+  const item = mapStcnItem(root.item, newsCategory)
+  if (!item) throw new Error('证券时报详情为空')
+  return item
+}
+
+function mapEastmoneyItem(row: unknown, category: 'yesterday' | 'realtime' = 'yesterday'): NewsItem | null {
+  const r = asRecord(row) ?? {}
+  const title = String(r['标题'] ?? r.title ?? '')
+  const content = String(r['正文'] ?? r.content ?? '')
+  const brief = String(r['摘要'] ?? r.brief ?? '')
+  const body = content || brief || title
+  if (!title && !body) return null
+  const published = String(r['发布时间'] ?? r.published_at ?? '')
+  const rawId = r.id ?? r['文章id']
+  const idNum =
+    typeof rawId === 'number'
+      ? rawId
+      : typeof rawId === 'string' && rawId.trim()
+        ? Number(rawId)
+        : Number.NaN
+  const hasId = Number.isFinite(idNum)
+  const url = String(r['分享链接'] ?? r.share_url ?? '').trim()
+  const categoryRaw = String(r['分类'] ?? r.category ?? (category === 'realtime' ? 'yw' : 'focus'))
+  return {
+    time: formatClsTime(published),
+    tag: '东方财富',
+    urgent: false,
+    title: title || body.slice(0, 80) || '（无标题）',
+    body: body || title,
+    category,
+    publishedAt: published || undefined,
+    id: hasId ? idNum : undefined,
+    url:
+      url ||
+      (hasId ? `https://finance.eastmoney.com/a/${idNum}.html` : undefined),
+    sourceCategory: categoryRaw,
+  }
+}
+
+/** 东方财富首页头条（读自家 API 缓存，→ 昨日新闻头条） */
+export async function fetchEastmoneyHeadlines(
+  opts?: { days?: number; limit?: number; signal?: AbortSignal },
+): Promise<StcnNewsResponse> {
+  const url = toApiUrl(endpoints.eastmoneyHeadlines)
+  url.searchParams.set('days', String(opts?.days ?? 7))
+  url.searchParams.set('limit', String(opts?.limit ?? 100))
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`东方财富头条请求失败 (${res.status})`)
+  const json: unknown = await res.json()
+  const root = asRecord(json) ?? {}
+  const itemsRaw = root.items
+  const items: NewsItem[] = Array.isArray(itemsRaw)
+    ? itemsRaw.map((row) => mapEastmoneyItem(row, 'yesterday')).filter((x): x is NewsItem => x != null)
+    : []
+  return {
+    items,
+    count: typeof root.count === 'number' ? root.count : items.length,
+    days: typeof root.days === 'number' ? root.days : null,
+    latestFetchedAt:
+      typeof root['最新抓取时间'] === 'string'
+        ? root['最新抓取时间']
+        : typeof root.latest_fetched_at === 'string'
+          ? root.latest_fetched_at
+          : null,
+    error: typeof root.error === 'string' ? root.error : null,
+  }
+}
+
+/** 东方财富快讯焦点（读自家 API 缓存，→ 实时新闻） */
+export async function fetchEastmoneyYw(
+  opts?: { days?: number; limit?: number; signal?: AbortSignal },
+): Promise<StcnNewsResponse> {
+  const url = toApiUrl(endpoints.eastmoneyYw)
+  url.searchParams.set('days', String(opts?.days ?? 3))
+  url.searchParams.set('limit', String(opts?.limit ?? 100))
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`东方财富焦点请求失败 (${res.status})`)
+  const json: unknown = await res.json()
+  const root = asRecord(json) ?? {}
+  const itemsRaw = root.items
+  const items: NewsItem[] = Array.isArray(itemsRaw)
+    ? itemsRaw.map((row) => mapEastmoneyItem(row, 'realtime')).filter((x): x is NewsItem => x != null)
+    : []
+  return {
+    items,
+    count: typeof root.count === 'number' ? root.count : items.length,
+    days: typeof root.days === 'number' ? root.days : null,
+    latestFetchedAt:
+      typeof root['最新抓取时间'] === 'string'
+        ? root['最新抓取时间']
+        : typeof root.latest_fetched_at === 'string'
+          ? root.latest_fetched_at
+          : null,
+    error: typeof root.error === 'string' ? root.error : null,
+  }
+}
+
+/** 单篇东方财富详情；可选按需补全正文 */
+export async function fetchEastmoneyArticle(
+  articleId: number,
+  opts?: { category?: string; ensureFull?: boolean; signal?: AbortSignal },
+): Promise<NewsItem> {
+  const url = toApiUrl(endpoints.eastmoneyArticle(articleId))
+  url.searchParams.set('category', opts?.category ?? 'focus')
+  if (opts?.ensureFull === false) {
+    url.searchParams.set('ensure_full', 'false')
+  }
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`东方财富详情请求失败 (${res.status})`)
+  const json: unknown = await res.json()
+  const root = asRecord(json) ?? {}
+  const item = mapEastmoneyItem(root.item, itemCategoryFromApi(String(root.category ?? opts?.category ?? 'focus')))
+  if (!item) throw new Error('东方财富详情为空')
+  return item
+}
+
+function itemCategoryFromApi(cat: string): 'yesterday' | 'realtime' {
+  return cat === 'yw' ? 'realtime' : 'yesterday'
+}
+
+function mapCsItem(row: unknown, category: 'yesterday' | 'realtime'): NewsItem | null {
+  const r = asRecord(row) ?? {}
+  const title = String(r['标题'] ?? r.title ?? '')
+  const content = String(r['正文'] ?? r.content ?? '')
+  const brief = String(r['摘要'] ?? r.brief ?? '')
+  const body = content || brief || title
+  if (!title && !body) return null
+  const published = String(r['发布时间'] ?? r.published_at ?? '')
+  const rawId = r.id ?? r['文章id']
+  const idNum =
+    typeof rawId === 'number'
+      ? rawId
+      : typeof rawId === 'string' && rawId.trim()
+        ? Number(rawId)
+        : Number.NaN
+  const hasId = Number.isFinite(idNum)
+  const url = String(r['分享链接'] ?? r.share_url ?? '').trim()
+  const categoryRaw = String(r['分类'] ?? r.category ?? (category === 'realtime' ? 'cjyw' : 'homepage'))
+  return {
+    time: formatClsTime(published),
+    tag: '中国证券报',
+    urgent: false,
+    title: title || body.slice(0, 80) || '（无标题）',
+    body: body || title,
+    category,
+    publishedAt: published || undefined,
+    id: hasId ? idNum : undefined,
+    url: url || undefined,
+    sourceCategory: categoryRaw,
+  }
+}
+
+/** 中国证券报首页头条（读自家 API 缓存，→ 昨日新闻头条） */
+export async function fetchCsHeadlines(
+  opts?: { days?: number; limit?: number; signal?: AbortSignal },
+): Promise<StcnNewsResponse> {
+  const url = toApiUrl(endpoints.csHeadlines)
+  url.searchParams.set('days', String(opts?.days ?? 7))
+  url.searchParams.set('limit', String(opts?.limit ?? 50))
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`中国证券报头条请求失败 (${res.status})`)
+  const json: unknown = await res.json()
+  const root = asRecord(json) ?? {}
+  const itemsRaw = root.items
+  const items: NewsItem[] = Array.isArray(itemsRaw)
+    ? itemsRaw.map((row) => mapCsItem(row, 'yesterday')).filter((x): x is NewsItem => x != null)
+    : []
+  return {
+    items,
+    count: typeof root.count === 'number' ? root.count : items.length,
+    days: typeof root.days === 'number' ? root.days : null,
+    latestFetchedAt:
+      typeof root['最新抓取时间'] === 'string'
+        ? root['最新抓取时间']
+        : typeof root.latest_fetched_at === 'string'
+          ? root.latest_fetched_at
+          : null,
+    error: typeof root.error === 'string' ? root.error : null,
+  }
+}
+
+/** 中国证券报财经要闻（读自家 API 缓存，→ 实时新闻） */
+export async function fetchCsCjyw(
+  opts?: { days?: number; limit?: number; signal?: AbortSignal },
+): Promise<StcnNewsResponse> {
+  const url = toApiUrl(endpoints.csCjyw)
+  url.searchParams.set('days', String(opts?.days ?? 3))
+  url.searchParams.set('limit', String(opts?.limit ?? 100))
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`中国证券报财经要闻请求失败 (${res.status})`)
+  const json: unknown = await res.json()
+  const root = asRecord(json) ?? {}
+  const itemsRaw = root.items
+  const items: NewsItem[] = Array.isArray(itemsRaw)
+    ? itemsRaw.map((row) => mapCsItem(row, 'realtime')).filter((x): x is NewsItem => x != null)
+    : []
+  return {
+    items,
+    count: typeof root.count === 'number' ? root.count : items.length,
+    days: typeof root.days === 'number' ? root.days : null,
+    latestFetchedAt:
+      typeof root['最新抓取时间'] === 'string'
+        ? root['最新抓取时间']
+        : typeof root.latest_fetched_at === 'string'
+          ? root.latest_fetched_at
+          : null,
+    error: typeof root.error === 'string' ? root.error : null,
+  }
+}
+
+function mapTgbItem(row: unknown, category: 'yesterday' | 'realtime'): NewsItem | null {
+  const r = asRecord(row) ?? {}
+  const title = String(r['标题'] ?? r.title ?? '')
+  const content = String(r['正文'] ?? r.content ?? '')
+  const brief = String(r['摘要'] ?? r.brief ?? '')
+  const body = content || brief || title
+  if (!title && !body) return null
+  const published = String(r['发布时间'] ?? r.published_at ?? '')
+  const rawId = r.id ?? r['文章id']
+  const idNum =
+    typeof rawId === 'number'
+      ? rawId
+      : typeof rawId === 'string' && rawId.trim()
+        ? Number(rawId)
+        : Number.NaN
+  const hasId = Number.isFinite(idNum)
+  const url = String(r['分享链接'] ?? r.share_url ?? '').trim()
+  return {
+    time: formatClsTime(published),
+    tag: '淘股吧',
+    urgent: category === 'yesterday',
+    title: title || body.slice(0, 80) || '（无标题）',
+    body: body || title,
+    category,
+    publishedAt: published || undefined,
+    id: hasId ? idNum : undefined,
+    url:
+      url ||
+      (hasId ? `https://shuo.tgb.cn/shuo/toViewShuo?shuoID=${idNum}` : undefined),
+  }
+}
+
+/** 淘股吧极速快讯「全部」（读自家 API 缓存，→ 实时新闻） */
+export async function fetchTgbAll(
+  opts?: { days?: number; limit?: number; signal?: AbortSignal },
+): Promise<StcnNewsResponse> {
+  const url = toApiUrl(endpoints.tgbAll)
+  url.searchParams.set('days', String(opts?.days ?? 3))
+  url.searchParams.set('limit', String(opts?.limit ?? 100))
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`淘股吧快讯（全部）请求失败 (${res.status})`)
+  const json: unknown = await res.json()
+  const root = asRecord(json) ?? {}
+  const itemsRaw = root.items
+  const items: NewsItem[] = Array.isArray(itemsRaw)
+    ? itemsRaw.map((row) => mapTgbItem(row, 'realtime')).filter((x): x is NewsItem => x != null)
+    : []
+  return {
+    items,
+    count: typeof root.count === 'number' ? root.count : items.length,
+    days: typeof root.days === 'number' ? root.days : null,
+    latestFetchedAt:
+      typeof root['最新抓取时间'] === 'string'
+        ? root['最新抓取时间']
+        : typeof root.latest_fetched_at === 'string'
+          ? root.latest_fetched_at
+          : null,
+    error: typeof root.error === 'string' ? root.error : null,
+  }
+}
+
+/** 淘股吧极速快讯「加红」（读自家 API 缓存，→ 昨日新闻头条） */
+export async function fetchTgbJiahong(
+  opts?: { days?: number; limit?: number; signal?: AbortSignal },
+): Promise<StcnNewsResponse> {
+  const url = toApiUrl(endpoints.tgbJiahong)
+  url.searchParams.set('days', String(opts?.days ?? 7))
+  url.searchParams.set('limit', String(opts?.limit ?? 100))
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`淘股吧快讯（加红）请求失败 (${res.status})`)
+  const json: unknown = await res.json()
+  const root = asRecord(json) ?? {}
+  const itemsRaw = root.items
+  const items: NewsItem[] = Array.isArray(itemsRaw)
+    ? itemsRaw.map((row) => mapTgbItem(row, 'yesterday')).filter((x): x is NewsItem => x != null)
+    : []
+  return {
+    items,
+    count: typeof root.count === 'number' ? root.count : items.length,
+    days: typeof root.days === 'number' ? root.days : null,
+    latestFetchedAt:
+      typeof root['最新抓取时间'] === 'string'
+        ? root['最新抓取时间']
+        : typeof root.latest_fetched_at === 'string'
+          ? root.latest_fetched_at
+          : null,
+    error: typeof root.error === 'string' ? root.error : null,
+  }
+}
+
+/** 单篇中国证券报详情；可选按需补全正文 */
+export async function fetchCsArticle(
+  articleId: number,
+  opts?: { category?: 'homepage' | 'cjyw'; ensureFull?: boolean; signal?: AbortSignal },
+): Promise<NewsItem> {
+  const url = toApiUrl(endpoints.csArticle(articleId))
+  url.searchParams.set('category', opts?.category ?? 'cjyw')
+  if (opts?.ensureFull === false) {
+    url.searchParams.set('ensure_full', 'false')
+  }
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`中国证券报详情请求失败 (${res.status})`)
+  const json: unknown = await res.json()
+  const root = asRecord(json) ?? {}
+  const cat = String(root.category ?? opts?.category ?? 'cjyw')
+  const newsCategory = cat === 'homepage' ? 'yesterday' : 'realtime'
+  const item = mapCsItem(root.item, newsCategory)
+  if (!item) throw new Error('中国证券报详情为空')
+  return item
+}
+
+function mapJqkaItem(row: unknown, category: 'yesterday' | 'realtime'): NewsItem | null {
+  const r = asRecord(row) ?? {}
+  const title = String(r['标题'] ?? r.title ?? '')
+  const content = String(r['正文'] ?? r.content ?? '')
+  const brief = String(r['摘要'] ?? r.brief ?? '')
+  const body = content || brief || title
+  if (!title && !body) return null
+  const published = String(r['发布时间'] ?? r.published_at ?? '')
+  const rawId = r.id ?? r['文章id']
+  const idNum =
+    typeof rawId === 'number'
+      ? rawId
+      : typeof rawId === 'string' && rawId.trim()
+        ? Number(rawId)
+        : Number.NaN
+  const hasId = Number.isFinite(idNum)
+  const url = String(r['分享链接'] ?? r.share_url ?? '').trim()
+  const categoryRaw = String(r['分类'] ?? r.category ?? (category === 'realtime' ? 'astock' : 'headline'))
+  return {
+    time: formatClsTime(published),
+    tag: '同花顺财经',
+    urgent: false,
+    title: title || body.slice(0, 80) || '（无标题）',
+    body: body || title,
+    category,
+    publishedAt: published || undefined,
+    id: hasId ? idNum : undefined,
+    url:
+      url ||
+      (hasId ? `https://news.10jqka.com.cn/tapp/news/detail/?seq=${idNum}` : undefined),
+    sourceCategory: categoryRaw,
+  }
+}
+
+/** 同花顺财经首页头条（读自家 API 缓存，→ 昨日新闻头条） */
+export async function fetchJqkaHeadlines(
+  opts?: { days?: number; limit?: number; signal?: AbortSignal },
+): Promise<StcnNewsResponse> {
+  const url = toApiUrl(endpoints.jqkaHeadlines)
+  url.searchParams.set('days', String(opts?.days ?? 7))
+  url.searchParams.set('limit', String(opts?.limit ?? 50))
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`同花顺头条请求失败 (${res.status})`)
+  const json: unknown = await res.json()
+  const root = asRecord(json) ?? {}
+  const itemsRaw = root.items
+  const items: NewsItem[] = Array.isArray(itemsRaw)
+    ? itemsRaw.map((row) => mapJqkaItem(row, 'yesterday')).filter((x): x is NewsItem => x != null)
+    : []
+  return {
+    items,
+    count: typeof root.count === 'number' ? root.count : items.length,
+    days: typeof root.days === 'number' ? root.days : null,
+    latestFetchedAt:
+      typeof root['最新抓取时间'] === 'string'
+        ? root['最新抓取时间']
+        : typeof root.latest_fetched_at === 'string'
+          ? root.latest_fetched_at
+          : null,
+    error: typeof root.error === 'string' ? root.error : null,
+  }
+}
+
+/** 同花顺财经 A股 7x24（读自家 API 缓存，→ 实时新闻） */
+export async function fetchJqkaAstock(
+  opts?: { days?: number; limit?: number; signal?: AbortSignal },
+): Promise<StcnNewsResponse> {
+  const url = toApiUrl(endpoints.jqkaAstock)
+  url.searchParams.set('days', String(opts?.days ?? 3))
+  url.searchParams.set('limit', String(opts?.limit ?? 100))
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`同花顺 A股快讯请求失败 (${res.status})`)
+  const json: unknown = await res.json()
+  const root = asRecord(json) ?? {}
+  const itemsRaw = root.items
+  const items: NewsItem[] = Array.isArray(itemsRaw)
+    ? itemsRaw.map((row) => mapJqkaItem(row, 'realtime')).filter((x): x is NewsItem => x != null)
+    : []
+  return {
+    items,
+    count: typeof root.count === 'number' ? root.count : items.length,
+    days: typeof root.days === 'number' ? root.days : null,
+    latestFetchedAt:
+      typeof root['最新抓取时间'] === 'string'
+        ? root['最新抓取时间']
+        : typeof root.latest_fetched_at === 'string'
+          ? root.latest_fetched_at
+          : null,
+    error: typeof root.error === 'string' ? root.error : null,
+  }
+}
+
+/** 单篇同花顺文章详情；可选按需补全正文 */
+export async function fetchJqkaArticle(
+  articleId: number,
+  opts?: { category?: 'headline' | 'astock'; ensureFull?: boolean; signal?: AbortSignal },
+): Promise<NewsItem> {
+  const url = toApiUrl(endpoints.jqkaArticle(articleId))
+  url.searchParams.set('category', opts?.category ?? 'astock')
+  if (opts?.ensureFull === false) {
+    url.searchParams.set('ensure_full', 'false')
+  }
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`同花顺详情请求失败 (${res.status})`)
+  const json: unknown = await res.json()
+  const root = asRecord(json) ?? {}
+  const cat = String(root.category ?? opts?.category ?? 'astock')
+  const newsCategory = cat === 'headline' ? 'yesterday' : 'realtime'
+  const item = mapJqkaItem(root.item, newsCategory)
+  if (!item) throw new Error('同花顺详情为空')
+  return item
+}
+
 export type ThsConceptItem = {
   code: string
   name: string

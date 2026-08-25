@@ -124,6 +124,8 @@ export interface NewsItem {
   id?: number
   /** 原文链接 */
   url?: string
+  /** 上游分类（如 stcn headline/yw；eastmoney focus/macro/industry） */
+  sourceCategory?: string
 }
 
 export interface LadderStock {

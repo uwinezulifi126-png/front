@@ -49,6 +49,7 @@ export function WatchlistFloat({
   })
   const dragRef = useRef<{ ox: number; oy: number; sx: number; sy: number } | null>(null)
   const [activeTab, setActiveTab] = useState<FloatTab>('watch')
+  const [pctSortDir, setPctSortDir] = useState<-1 | 1 | null>(null)
   const [pos, setPos] = useState(() => {
     if (floatState.x >= 0 && floatState.y >= 0) return clampPos(floatState.x, floatState.y)
     return defaultPos()
@@ -72,6 +73,32 @@ export function WatchlistFloat({
   for (const s of quoteStocks) {
     quoteByCode.set(s.tsCode, s)
     quoteByCode.set(s.code, s)
+  }
+
+  const getItemPct = (tsCode: string, code: string) => {
+    const q = quoteByCode.get(tsCode) ?? quoteByCode.get(code)
+    return q?.pct
+  }
+
+  const displayItems =
+    pctSortDir === null
+      ? watchlist.items
+      : [...watchlist.items].sort((a, b) => {
+          const av = getItemPct(a.tsCode, a.code)
+          const bv = getItemPct(b.tsCode, b.code)
+          if (av == null && bv == null) return 0
+          if (av == null) return 1
+          if (bv == null) return -1
+          return (av - bv) * pctSortDir
+        })
+
+  const handlePctSort = () => {
+    setPctSortDir((d) => (d === null ? -1 : d === -1 ? 1 : -1))
+  }
+
+  const pctSortMark = () => {
+    if (pctSortDir === null) return ''
+    return pctSortDir === -1 ? ' ↓' : ' ↑'
   }
 
   const onFloatInteract = () => {
@@ -169,12 +196,14 @@ export function WatchlistFloat({
                   <tr>
                     <th className="text-left">名称</th>
                     <th className="text-right">现价</th>
-                    <th className="text-right">涨幅</th>
+                    <th className="text-right sortable" onClick={handlePctSort} title="点击排序">
+                      涨幅{pctSortMark()}
+                    </th>
                     <th />
                   </tr>
                 </thead>
                 <tbody>
-                  {watchlist.items.map((item) => {
+                  {displayItems.map((item) => {
                     const q = quoteByCode.get(item.tsCode) ?? quoteByCode.get(item.code)
                     const pct = q?.pct
                     return (
