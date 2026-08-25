@@ -1,4 +1,6 @@
+import { useMemo } from 'react'
 import type { AlertApiItem } from '../api/client'
+import { sortAlertsAsc } from '../utils/alertSort'
 
 type Level = 'up' | 'warn' | 'down'
 
@@ -35,7 +37,14 @@ type AlertListProps = {
   error: string | null
 }
 
-export function AlertList({ selectedDate, items, loading, error }: AlertListProps) {
+export function AlertList({
+  selectedDate,
+  items,
+  loading,
+  error,
+}: AlertListProps) {
+  const sortedItems = useMemo(() => sortAlertsAsc(items), [items])
+
   if (!selectedDate) {
     return <div className="mono muted alert-list-empty">请选择交易日</div>
   }
@@ -45,13 +54,13 @@ export function AlertList({ selectedDate, items, loading, error }: AlertListProp
   if (error) {
     return <div className="mono muted alert-list-empty">{error}</div>
   }
-  if (items.length === 0) {
+  if (sortedItems.length === 0) {
     return <div className="mono muted alert-list-empty">暂无预警数据</div>
   }
 
   return (
     <div className="alert-list">
-      {items.map((it, idx) => {
+      {sortedItems.map((it, idx) => {
         const content = it.预警内容 || ''
         const name = it.股票名称 || it.股票代码 || ''
         const level = levelOf(it.预警类型, content)
